@@ -106,12 +106,14 @@ main.content { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="sidebar-item" onclick="showModule('learners',this)"><i class="fas fa-id-card"></i> Learner Profiles</div>
             <div class="sidebar-item" onclick="showModule('attendance',this)"><i class="fas fa-calendar-check"></i> Attendance</div>
             <div class="sidebar-item" onclick="showModule('discipline',this)"><i class="fas fa-triangle-exclamation"></i> Discipline</div>
+            <div class="sidebar-item" onclick="showModule('staff',this)"><i class="fas fa-chalkboard-teacher"></i> Staff</div>
         </aside>
         <main class="content">
             <div id="mod-dashboard"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading dashboard...</p></div></div>
             <div id="mod-learners" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading learners...</p></div></div>
             <div id="mod-attendance" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading attendance...</p></div></div>
             <div id="mod-discipline" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading discipline...</p></div></div>
+            <div id="mod-staff" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading staff...</p></div></div>
         </main>
     </div>
 </div>
@@ -170,6 +172,7 @@ function showModule(mod, el) {
     if (mod==='learners') loadLearners();
     if (mod==='attendance') loadAttendance();
     if (mod==='discipline') loadDiscipline();
+    if (mod==='staff') loadStaff();
     if (mod==='dashboard') loadDashboard();
 }
 
@@ -607,6 +610,219 @@ async function loadDiscipline(filters={}) {
         </div>`).join('')}
         </div>
     </div>`;
+}
+
+
+let allStaffProfiles = [];
+let activeStaff = null;
+
+async function loadStaff() {
+    const { data } = await window.sb.from('ec_staff_profiles').select('*').eq('school_id', currentSchoolId).order('full_name');
+    allStaffProfiles = data||[];
+    renderStaffList();
+}
+
+function renderStaffList() {
+    document.getElementById('mod-staff').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <div><h2 style="font-size:1.3rem;font-weight:800;">Staff Management</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">Teacher profiles and leave</p></div>
+        <div style="display:flex;gap:0.75rem;">
+            <button onclick="showLeaveOverview()" class="btn-secondary"><i class="fas fa-calendar-minus"></i> Leave Requests</button>
+            <button onclick="showStaffForm()" class="btn-primary"><i class="fas fa-plus"></i> Add Staff</button>
+        </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Total Staff</p><p class="num">${allStaffProfiles.length}</p></div>
+        <div class="stat-card"><p class="lbl">Active</p><p class="num" style="color:#34d399;">${allStaffProfiles.filter(s=>s.status==='active').length}</p></div>
+        <div class="stat-card"><p class="lbl">Teachers</p><p class="num">${allStaffProfiles.filter(s=>s.role==='teacher').length}</p></div>
+        <div class="stat-card"><p class="lbl">On Leave</p><p class="num" style="color:#fbbf24;">${allStaffProfiles.filter(s=>s.status==='on_leave').length}</p></div>
+    </div>
+    <div id="staffFormWrap"></div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 1.5fr 1fr;"><span>Name</span><span>Role</span><span>Department</span><span>Subjects</span><span>Status</span></div>
+        <div>${allStaffProfiles.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No staff yet</div>':allStaffProfiles.map(s=>`
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1.5fr 1fr;" onclick="viewStaff('${s.id}')">
+            <div><p style="font-weight:600;">${s.full_name}</p><p style="font-size:0.78rem;color:rgba(255,255,255,0.35);">${s.phone||''}</p></div>
+            <span class="badge badge-blue">${s.role}</span>
+            <span style="font-size:0.85rem;">${s.department||'\u2014'}</span>
+            <span style="font-size:0.85rem;">${s.subjects||'\u2014'}</span>
+            <span class="badge badge-${s.status==='active'?'green':s.status==='on_leave'?'yellow':'red'}">${s.status}</span>
+        </div>`).join('')}
+        </div>
+    </div>`;
+}
+
+function showStaffForm() {
+    document.getElementById('staffFormWrap').innerHTML = `
+    <div class="card p-6 mb-6">
+        <div class="section-header"><i class="fas fa-user-plus" style="color:#ffb703;"></i> Add Staff Member</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+            <div><label>Full Name *</label><input id="sfName" placeholder="Full name"></div>
+            <div><label>ID Number</label><input id="sfId" placeholder="SA ID number"></div>
+            <div><label>Phone</label><input id="sfPhone" placeholder="Phone number"></div>
+            <div><label>Email</label><input id="sfEmail" placeholder="Email address"></div>
+            <div><label>Date of Birth</label><input id="sfDob" type="date"></div>
+            <div><label>Gender</label><select id="sfGender"><option value="">Select...</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
+            <div><label>Role</label><select id="sfRole"><option value="teacher">Teacher</option><option value="principal">Principal</option><option value="deputy">Deputy Principal</option><option value="admin">Administration</option><option value="support">Support Staff</option></select></div>
+            <div><label>Department</label><input id="sfDept" placeholder="e.g. Mathematics"></div>
+            <div><label>Subjects</label><input id="sfSubjects" placeholder="e.g. Maths, Science"></div>
+            <div><label>Qualification</label><input id="sfQual" placeholder="Highest qualification"></div>
+            <div><label>Employment Date</label><input id="sfEmployDate" type="date"></div>
+            <div><label>Employment Type</label><select id="sfEmployType"><option value="permanent">Permanent</option><option value="contract">Contract</option><option value="substitute">Substitute</option></select></div>
+            <div><label>Status</label><select id="sfStatus"><option value="active">Active</option><option value="on_leave">On Leave</option><option value="inactive">Inactive</option></select></div>
+            <div><label>Emergency Contact</label><input id="sfEmName" placeholder="Name"></div>
+            <div><label>Emergency Phone</label><input id="sfEmPhone" placeholder="Phone"></div>
+            <div style="grid-column:1/-1;"><label>Address</label><input id="sfAddress" placeholder="Home address"></div>
+            <div style="grid-column:1/-1;"><label>Notes</label><textarea id="sfNotes" placeholder="Additional notes..." style="height:50px;"></textarea></div>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;">
+            <button onclick="addStaff()" class="btn-primary"><i class="fas fa-save"></i> Save</button>
+            <button onclick="document.getElementById('staffFormWrap').innerHTML=''" class="btn-secondary">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function addStaff() {
+    const name = document.getElementById('sfName').value.trim();
+    if (!name) { alert('Full name required'); return; }
+    const { error } = await window.sb.from('ec_staff_profiles').insert([{
+        school_id: currentSchoolId,
+        full_name: name,
+        id_number: document.getElementById('sfId').value.trim(),
+        phone: document.getElementById('sfPhone').value.trim(),
+        email: document.getElementById('sfEmail').value.trim(),
+        date_of_birth: document.getElementById('sfDob').value||null,
+        gender: document.getElementById('sfGender').value,
+        role: document.getElementById('sfRole').value,
+        department: document.getElementById('sfDept').value.trim(),
+        subjects: document.getElementById('sfSubjects').value.trim(),
+        qualification: document.getElementById('sfQual').value.trim(),
+        employment_date: document.getElementById('sfEmployDate').value||null,
+        employment_type: document.getElementById('sfEmployType').value,
+        status: document.getElementById('sfStatus').value,
+        emergency_contact_name: document.getElementById('sfEmName').value.trim(),
+        emergency_contact_phone: document.getElementById('sfEmPhone').value.trim(),
+        address: document.getElementById('sfAddress').value.trim(),
+        notes: document.getElementById('sfNotes').value.trim()
+    }]);
+    if (error) { alert('Error: '+error.message); return; }
+    document.getElementById('staffFormWrap').innerHTML='';
+    await loadStaff();
+}
+
+async function viewStaff(id) {
+    const { data: staff } = await window.sb.from('ec_staff_profiles').select('*').eq('id',id).single();
+    if (!staff) return;
+    activeStaff = staff;
+    const { data: leaves } = await window.sb.from('ec_leave_requests').select('*').eq('staff_profile_id',id).order('created_at',{ascending:false});
+    renderStaffDetail(staff, leaves||[]);
+}
+
+function renderStaffDetail(s, leaves) {
+    document.getElementById('mod-staff').innerHTML = `
+    <button onclick="loadStaff()" class="btn-secondary mb-4"><i class="fas fa-arrow-left"></i> Back to Staff</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <div><h2 style="font-size:1.3rem;font-weight:800;">${s.full_name}</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">${s.role} ${s.department?'\u2022 '+s.department:''}</p></div>
+        <span class="badge badge-${s.status==='active'?'green':s.status==='on_leave'?'yellow':'red'}">${s.status}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;">
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-user" style="color:#ffb703;"></i> Profile</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+                <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Phone</p><p>${s.phone||'\u2014'}</p></div>
+                <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Email</p><p style="font-size:0.85rem;">${s.email||'\u2014'}</p></div>
+                <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Subjects</p><p>${s.subjects||'\u2014'}</p></div>
+                <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Qualification</p><p>${s.qualification||'\u2014'}</p></div>
+                <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Employment</p><p>${s.employment_type||'\u2014'}</p></div>
+                <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Started</p><p>${s.employment_date?new Date(s.employment_date).toLocaleDateString('en-ZA'):'\u2014'}</p></div>
+                <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Emergency</p><p>${s.emergency_contact_name||'\u2014'} ${s.emergency_contact_phone?'('+s.emergency_contact_phone+')':''}</p></div>
+                <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Notes</p><p style="font-size:0.85rem;">${s.notes||'\u2014'}</p></div>
+            </div>
+        </div>
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-calendar-minus" style="color:#ffb703;"></i> Log Leave Request</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+                <div><label>Leave Type</label><select id="lvType"><option value="sick">Sick Leave</option><option value="annual">Annual Leave</option><option value="family">Family Responsibility</option><option value="study">Study Leave</option><option value="unpaid">Unpaid Leave</option></select></div>
+                <div><label>Days</label><input id="lvDays" type="number" placeholder="Number of days"></div>
+                <div><label>Start Date</label><input id="lvStart" type="date"></div>
+                <div><label>End Date</label><input id="lvEnd" type="date"></div>
+                <div style="grid-column:1/-1;"><label>Reason</label><textarea id="lvReason" placeholder="Reason for leave..." style="height:50px;"></textarea></div>
+            </div>
+            <button onclick="addLeaveRequest('${s.id}','${s.full_name}')" class="btn-primary" style="margin-top:0.75rem;"><i class="fas fa-plus"></i> Submit Request</button>
+        </div>
+    </div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr 80px;"><span>Type</span><span>Start</span><span>End</span><span>Days</span><span>Status</span><span></span></div>
+        <div>${leaves.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No leave requests</div>':leaves.map(l=>`
+        <div class="table-row" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr 80px;">
+            <span class="badge badge-blue">${l.leave_type}</span>
+            <span style="font-size:0.85rem;">${l.start_date?new Date(l.start_date).toLocaleDateString('en-ZA'):'\u2014'}</span>
+            <span style="font-size:0.85rem;">${l.end_date?new Date(l.end_date).toLocaleDateString('en-ZA'):'\u2014'}</span>
+            <span>${l.days||'\u2014'}</span>
+            <span class="badge badge-${l.status==='approved'?'green':l.status==='rejected'?'red':'yellow'}">${l.status}</span>
+            <div style="display:flex;gap:0.3rem;">
+                ${l.status==='pending'?`<button onclick="updateLeave('${l.id}','approved','${s.id}')" class="btn-success" style="padding:0.2rem 0.5rem;font-size:0.7rem;"><i class="fas fa-check"></i></button><button onclick="updateLeave('${l.id}','rejected','${s.id}')" class="btn-danger" style="padding:0.2rem 0.5rem;font-size:0.7rem;"><i class="fas fa-times"></i></button>`:''}
+            </div>
+        </div>`).join('')}
+        </div>
+    </div>`;
+}
+
+async function addLeaveRequest(staffProfileId, staffName) {
+    const start = document.getElementById('lvStart').value;
+    const end = document.getElementById('lvEnd').value;
+    if (!start||!end) { alert('Start and end dates required'); return; }
+    const { error } = await window.sb.from('ec_leave_requests').insert([{
+        school_id: currentSchoolId,
+        staff_profile_id: staffProfileId,
+        staff_name: staffName,
+        leave_type: document.getElementById('lvType').value,
+        start_date: start,
+        end_date: end,
+        days: parseInt(document.getElementById('lvDays').value)||null,
+        reason: document.getElementById('lvReason').value.trim(),
+        status: 'pending'
+    }]);
+    if (error) { alert('Error: '+error.message); return; }
+    await viewStaff(staffProfileId);
+}
+
+async function updateLeave(leaveId, status, staffProfileId) {
+    await window.sb.from('ec_leave_requests').update({status, approved_by: currentUser.full_name||currentUser.username}).eq('id', leaveId);
+    await viewStaff(staffProfileId);
+}
+
+async function showLeaveOverview() {
+    const { data } = await window.sb.from('ec_leave_requests').select('*').eq('school_id', currentSchoolId).order('created_at',{ascending:false});
+    const leaves = data||[];
+    document.getElementById('mod-staff').innerHTML = `
+    <button onclick="loadStaff()" class="btn-secondary mb-4"><i class="fas fa-arrow-left"></i> Back to Staff</button>
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:800;">Leave Requests</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">All staff leave requests</p></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Pending</p><p class="num" style="color:#fbbf24;">${leaves.filter(l=>l.status==='pending').length}</p></div>
+        <div class="stat-card"><p class="lbl">Approved</p><p class="num" style="color:#34d399;">${leaves.filter(l=>l.status==='approved').length}</p></div>
+        <div class="stat-card"><p class="lbl">Rejected</p><p class="num" style="color:#f87171;">${leaves.filter(l=>l.status==='rejected').length}</p></div>
+    </div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 80px;"><span>Staff</span><span>Type</span><span>Start</span><span>End</span><span>Status</span><span></span></div>
+        <div>${leaves.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No leave requests</div>':leaves.map(l=>`
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 80px;">
+            <span style="font-weight:600;">${l.staff_name||'\u2014'}</span>
+            <span class="badge badge-blue">${l.leave_type}</span>
+            <span style="font-size:0.85rem;">${l.start_date?new Date(l.start_date).toLocaleDateString('en-ZA'):'\u2014'}</span>
+            <span style="font-size:0.85rem;">${l.end_date?new Date(l.end_date).toLocaleDateString('en-ZA'):'\u2014'}</span>
+            <span class="badge badge-${l.status==='approved'?'green':l.status==='rejected'?'red':'yellow'}">${l.status}</span>
+            <div style="display:flex;gap:0.3rem;">
+                ${l.status==='pending'?`<button onclick="updateLeaveOverview('${l.id}','approved')" class="btn-success" style="padding:0.2rem 0.5rem;font-size:0.7rem;"><i class="fas fa-check"></i></button><button onclick="updateLeaveOverview('${l.id}','rejected')" class="btn-danger" style="padding:0.2rem 0.5rem;font-size:0.7rem;"><i class="fas fa-times"></i></button>`:''}
+            </div>
+        </div>`).join('')}
+        </div>
+    </div>`;
+}
+
+async function updateLeaveOverview(leaveId, status) {
+    await window.sb.from('ec_leave_requests').update({status, approved_by: currentUser.full_name||currentUser.username}).eq('id', leaveId);
+    await showLeaveOverview();
 }
 
 checkSession();

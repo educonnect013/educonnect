@@ -108,6 +108,7 @@ main.content { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="sidebar-item" onclick="showModule('discipline',this)"><i class="fas fa-triangle-exclamation"></i> Discipline</div>
             <div class="sidebar-item" onclick="showModule('staff',this)"><i class="fas fa-chalkboard-teacher"></i> Staff</div>
             <div class="sidebar-item" onclick="showModule('fees',this)"><i class="fas fa-money-bill-wave"></i> School Fees</div>
+            <div class="sidebar-item" onclick="showModule('assessments',this)"><i class="fas fa-pen-to-square"></i> Assessments</div>
         </aside>
         <main class="content">
             <div id="mod-dashboard"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading dashboard...</p></div></div>
@@ -116,6 +117,7 @@ main.content { flex:1; padding:1.5rem; overflow-y:auto; }
             <div id="mod-discipline" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading discipline...</p></div></div>
             <div id="mod-staff" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading staff...</p></div></div>
             <div id="mod-fees" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading fees...</p></div></div>
+            <div id="mod-assessments" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading assessments...</p></div></div>
         </main>
     </div>
 </div>
@@ -176,6 +178,7 @@ function showModule(mod, el) {
     if (mod==='discipline') loadDiscipline();
     if (mod==='staff') loadStaff();
     if (mod==='fees') loadFees();
+    if (mod==='assessments') loadAssessments();
     if (mod==='dashboard') loadDashboard();
 }
 
@@ -988,6 +991,174 @@ function printReceipt(learnerName, amount, method, reference, date) {
     <script>window.onload=()=>{window.print();}<\/script>
     </body></html>`);
     w.document.close();
+}
+
+
+function calcGrade(pct) {
+    if (pct >= 80) return 'A';
+    if (pct >= 70) return 'B';
+    if (pct >= 60) return 'C';
+    if (pct >= 50) return 'D';
+    if (pct >= 40) return 'E';
+    return 'F';
+}
+function gradeColor(g) {
+    if (g==='A') return '#34d399';
+    if (g==='B') return '#60a5fa';
+    if (g==='C') return '#ffb703';
+    if (g==='D') return '#fb923c';
+    return '#f87171';
+}
+
+async function loadAssessments() {
+    const { data: classes } = await window.sb.from('ec_learners').select('class_name,grade').eq('school_id', currentSchoolId).eq('status','active').neq('class_name','');
+    const uniqueClasses = [...new Map((classes||[]).filter(l=>l.class_name).map(l=>[l.class_name, l])).values()].sort((a,b)=>a.class_name.localeCompare(b.class_name));
+    const { data: recent } = await window.sb.from('ec_assessments').select('*').eq('school_id', currentSchoolId).order('created_at',{ascending:false}).limit(50);
+    renderAssessmentsShell(uniqueClasses, recent||[], null, null, null, []);
+}
+
+function renderAssessmentsShell(classes, recent, selClass, selSubject, selType, learners, existing=[]) {
+    const bySubject = {};
+    recent.forEach(r => {
+        if (!bySubject[r.subject]) bySubject[r.subject] = [];
+        bySubject[r.subject].push(r);
+    });
+    const subjectAvgs = Object.entries(bySubject).map(([sub, recs]) => {
+        const avg = recs.reduce((s,r)=>s+parseFloat(r.percentage||0),0)/recs.length;
+        return {sub, avg: Math.round(avg), count: recs.length};
+    }).sort((a,b)=>a.avg-b.avg);
+
+    document.getElementById('mod-assessments').innerHTML = `
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:800;">Assessments & Marks</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">Capture and track learner performance</p></div>
+
+    <div class="card p-5 mb-6">
+        <div class="section-header"><i class="fas fa-pen-to-square" style="color:#ffb703;"></i> Capture Marks</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:1rem;align-items:flex-end;">
+            <div><label>Class</label><select id="asClass">
+                <option value="">Select class...</option>${classes.map(c=>`<option value="${c.class_name}" ${c.class_name===selClass?'selected':''}>${c.class_name}</option>`).join('')}
+            </select></div>
+            <div><label>Subject</label><input id="asSubject" placeholder="e.g. Mathematics" value="${selSubject||''}"></div>
+            <div><label>Assessment Type</label><select id="asType">
+                <option value="test" ${selType==='test'?'selected':''}>Test</option>
+                <option value="exam" ${selType==='exam'?'selected':''}>Exam</option>
+                <option value="assignment" ${selType==='assignment'?'selected':''}>Assignment</option>
+                <option value="project" ${selType==='project'?'selected':''}>Project</option>
+                <option value="oral" ${selType==='oral'?'selected':''}>Oral</option>
+            </select></div>
+            <div><label>Term</label><select id="asTerm">
+                <option value="Term 1">Term 1</option>
+                <option value="Term 2">Term 2</option>
+                <option value="Term 3">Term 3</option>
+                <option value="Term 4">Term 4</option>
+            </select></div>
+            <div><label>Total Mark</label><input id="asTotal" type="number" value="100" placeholder="100"></div>
+            <button onclick="loadMarkSheet()" class="btn-primary"><i class="fas fa-list"></i> Load Class</button>
+        </div>
+    </div>
+
+    ${learners.length>0 ? `
+    <div class="card p-5 mb-6" id="markSheet">
+        <div class="section-header"><i class="fas fa-table" style="color:#ffb703;"></i> Mark Sheet — ${selClass} | ${selSubject}</div>
+        <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+            <tr style="background:rgba(0,0,0,0.2);"><th style="text-align:left;padding:0.6rem 1rem;color:rgba(255,183,3,0.7);font-size:0.72rem;text-transform:uppercase;">Learner</th><th style="padding:0.6rem 1rem;color:rgba(255,183,3,0.7);font-size:0.72rem;text-transform:uppercase;text-align:center;">Mark</th><th style="padding:0.6rem 1rem;color:rgba(255,183,3,0.7);font-size:0.72rem;text-transform:uppercase;text-align:center;">%</th><th style="padding:0.6rem 1rem;color:rgba(255,183,3,0.7);font-size:0.72rem;text-transform:uppercase;text-align:center;">Grade</th></tr>
+            ${learners.map(l => {
+                const ex = existing.find(e=>e.learner_id===l.id);
+                return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+                    <td style="padding:0.6rem 1rem;font-weight:600;">${l.full_name}</td>
+                    <td style="padding:0.6rem 1rem;text-align:center;"><input id="mark-${l.id}" type="number" value="${ex?ex.mark:''}" min="0" oninput="calcRowGrade('${l.id}')" style="width:80px;text-align:center;padding:0.35rem;"></td>
+                    <td style="padding:0.6rem 1rem;text-align:center;" id="pct-${l.id}">${ex?ex.percentage+'%':''}</td>
+                    <td style="padding:0.6rem 1rem;text-align:center;" id="grd-${l.id}">${ex?`<span style="font-weight:800;color:${gradeColor(ex.grade_achieved||'')};">${ex.grade_achieved||''}</span>`:''}</td>
+                </tr>`;
+            }).join('')}
+        </table>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;align-items:center;">
+            <button onclick="saveMarkSheet()" class="btn-primary"><i class="fas fa-save"></i> Save All Marks</button>
+            <span id="saveMsg" style="color:#34d399;font-size:0.85rem;display:none;"><i class="fas fa-check"></i> Saved</span>
+        </div>
+    </div>` : ''}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;">
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-chart-bar" style="color:#ffb703;"></i> Subject Performance</div>
+            ${subjectAvgs.length===0?'<p style="color:rgba(255,255,255,0.25);font-size:0.875rem;">No data yet</p>':subjectAvgs.map(s=>`
+            <div style="margin-bottom:0.75rem;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem;"><span style="font-size:0.85rem;">${s.sub}</span><span style="font-weight:700;color:${gradeColor(calcGrade(s.avg))};">${s.avg}%</span></div>
+                <div style="background:rgba(255,255,255,0.06);border-radius:4px;height:6px;"><div style="background:${gradeColor(calcGrade(s.avg))};height:100%;width:${s.avg}%;border-radius:4px;"></div></div>
+            </div>`).join('')}
+        </div>
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-clock" style="color:#ffb703;"></i> Recent Assessments</div>
+            ${recent.slice(0,8).length===0?'<p style="color:rgba(255,255,255,0.25);font-size:0.875rem;">No assessments yet</p>':recent.slice(0,8).map(r=>`
+            <div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+                <div><p style="font-size:0.85rem;font-weight:600;">${r.learner_name||'\u2014'}</p><p style="font-size:0.75rem;color:rgba(255,255,255,0.35);">${r.subject} \u2022 ${r.assessment_type}</p></div>
+                <span style="font-weight:800;color:${gradeColor(r.grade_achieved||'')};">${r.percentage!=null?r.percentage+'%':'\u2014'}</span>
+            </div>`).join('')}
+        </div>
+    </div>`;
+}
+
+function calcRowGrade(learnerId) {
+    const total = parseFloat(document.getElementById('asTotal').value)||100;
+    const mark = parseFloat(document.getElementById('mark-'+learnerId).value);
+    if (isNaN(mark)) { document.getElementById('pct-'+learnerId).textContent=''; document.getElementById('grd-'+learnerId).innerHTML=''; return; }
+    const pct = Math.round((mark/total)*100);
+    const grade = calcGrade(pct);
+    document.getElementById('pct-'+learnerId).textContent = pct+'%';
+    document.getElementById('grd-'+learnerId).innerHTML = `<span style="font-weight:800;color:${gradeColor(grade)};">${grade}</span>`;
+}
+
+async function loadMarkSheet() {
+    const className = document.getElementById('asClass').value;
+    const subject = document.getElementById('asSubject').value.trim();
+    if (!className) { alert('Select a class'); return; }
+    if (!subject) { alert('Enter a subject'); return; }
+    const term = document.getElementById('asTerm').value;
+    const type = document.getElementById('asType').value;
+    const { data: learners } = await window.sb.from('ec_learners').select('id,full_name,grade').eq('school_id', currentSchoolId).eq('class_name', className).eq('status','active').order('full_name');
+    const { data: existing } = await window.sb.from('ec_assessments').select('*').eq('school_id', currentSchoolId).eq('class_name', className).eq('subject', subject).eq('term', term).eq('assessment_type', type);
+    const { data: classes } = await window.sb.from('ec_learners').select('class_name,grade').eq('school_id', currentSchoolId).eq('status','active').neq('class_name','');
+    const uniqueClasses = [...new Map((classes||[]).filter(l=>l.class_name).map(l=>[l.class_name,l])).values()].sort((a,b)=>a.class_name.localeCompare(b.class_name));
+    const { data: recent } = await window.sb.from('ec_assessments').select('*').eq('school_id', currentSchoolId).order('created_at',{ascending:false}).limit(50);
+    renderAssessmentsShell(uniqueClasses, recent||[], className, subject, type, learners||[], existing||[]);
+}
+
+async function saveMarkSheet() {
+    const className = document.getElementById('asClass').value;
+    const subject = document.getElementById('asSubject').value.trim();
+    const type = document.getElementById('asType').value;
+    const term = document.getElementById('asTerm').value;
+    const total = parseFloat(document.getElementById('asTotal').value)||100;
+    const year = new Date().getFullYear();
+    const { data: learners } = await window.sb.from('ec_learners').select('id,full_name,grade').eq('school_id', currentSchoolId).eq('class_name', className).eq('status','active');
+    const { data: existing } = await window.sb.from('ec_assessments').select('id,learner_id').eq('school_id', currentSchoolId).eq('class_name', className).eq('subject', subject).eq('term', term).eq('assessment_type', type);
+
+    const upserts = (learners||[]).map(l => {
+        const markEl = document.getElementById('mark-'+l.id);
+        if (!markEl||markEl.value==='') return null;
+        const mark = parseFloat(markEl.value);
+        const pct = Math.round((mark/total)*100);
+        const grade = calcGrade(pct);
+        const ex = (existing||[]).find(e=>e.learner_id===l.id);
+        return {
+            ...(ex?{id:ex.id}:{}),
+            school_id: currentSchoolId,
+            learner_id: l.id,
+            learner_name: l.full_name,
+            grade: l.grade,
+            class_name: className,
+            subject, assessment_type: type, term, year, total,
+            mark, percentage: pct, grade_achieved: grade,
+            recorded_by: currentUser.full_name||currentUser.username
+        };
+    }).filter(Boolean);
+
+    if (upserts.length===0) { alert('No marks entered'); return; }
+    const { error } = await window.sb.from('ec_assessments').upsert(upserts, {onConflict:'id'});
+    if (error) { alert('Error: '+error.message); return; }
+    const msg = document.getElementById('saveMsg');
+    if (msg) { msg.style.display='inline'; setTimeout(()=>msg.style.display='none', 2000); }
 }
 
 checkSession();

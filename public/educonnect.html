@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EduConnect</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="supabase-init.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: linear-gradient(135deg, #14213d 0%, #1a2744 40%, #0d1b2a 100%); min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e2e8f0; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+::-webkit-scrollbar-thumb { background: rgba(255,183,3,0.25); border-radius: 3px; }
+
+#loginScreen { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:1rem; position:relative; overflow:hidden; }
+#loginScreen .glow { position:absolute; width:600px; height:600px; border-radius:50%; background:radial-gradient(circle,rgba(255,183,3,0.07) 0%,transparent 70%); top:-200px; right:-200px; pointer-events:none; }
+.login-card { background: rgba(255,255,255,0.05); backdrop-filter: blur(32px); -webkit-backdrop-filter: blur(32px); border: 1px solid rgba(255,183,3,0.15); border-radius: 24px; padding: 2.5rem; width:100%; max-width:380px; box-shadow: 0 32px 80px rgba(0,0,0,0.6); position:relative; z-index:1; }
+.login-logo { width:64px; height:64px; background:linear-gradient(135deg,#ffb703,#fb8500); border-radius:14px; display:flex; align-items:center; justify-content:center; margin:0 auto 1rem; box-shadow:0 8px 24px rgba(255,183,3,0.4); }
+.login-card h1 { font-size:1.5rem; font-weight:900; color:#ffb703; text-align:center; letter-spacing:1px; }
+.login-card .sub { color:rgba(255,255,255,0.4); font-size:0.85rem; text-align:center; margin-top:0.3rem; margin-bottom:1.75rem; }
+
+label { color:rgba(255,183,3,0.85); font-size:0.75rem; font-weight:700; display:block; margin-bottom:0.35rem; text-transform:uppercase; letter-spacing:0.06em; }
+input, select, textarea { background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,183,3,0.03)); border: 1px solid rgba(255,183,3,0.15); border-radius: 10px; color: #e2e8f0; padding: 0.7rem 0.9rem; width: 100%; font-size: 0.9rem; outline: none; transition:all 0.2s; box-shadow: inset 0 2px 8px rgba(0,0,0,0.2); }
+input:focus, select:focus, textarea:focus { border-color: rgba(255,183,3,0.5); background: rgba(255,183,3,0.06); box-shadow: inset 0 2px 8px rgba(0,0,0,0.2), 0 0 0 3px rgba(255,183,3,0.1); }
+input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.25); }
+select option { background:#1a2744; color:#e2e8f0; }
+.field { margin-bottom:1.1rem; }
+
+.btn-primary { background: linear-gradient(135deg, #ffb703, #fb8500); border: none; color: #1a1100; font-weight: 700; cursor: pointer; border-radius: 10px; padding: 0.7rem 1.2rem; font-size:0.9rem; transition: all 0.2s; box-shadow: 0 4px 15px rgba(255,183,3,0.3); }
+.btn-primary:hover { background: linear-gradient(135deg, #ffc733, #ff9a1f); }
+.btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-weight: 600; cursor: pointer; border-radius: 10px; padding: 0.7rem 1.2rem; font-size:0.9rem; transition:all 0.2s; }
+.btn-secondary:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,183,3,0.3); color: #ffb703; }
+.btn-danger { background: linear-gradient(135deg, #ef4444, #dc2626); border: none; color: white; font-weight: 600; cursor: pointer; border-radius: 8px; padding: 0.4rem 0.8rem; font-size:0.78rem; }
+.error-msg { background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.25); color:#f87171; padding:0.7rem 1rem; border-radius:10px; font-size:0.85rem; margin-bottom:1rem; display:none; }
+
+#mainApp { display:none; min-height:100vh; }
+nav.topnav { background:rgba(13,27,42,0.9); backdrop-filter:blur(20px); border-bottom:1px solid rgba(255,183,3,0.1); padding:0 1.5rem; height:60px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; box-shadow:0 4px 24px rgba(0,0,0,0.4); }
+.brand { display:flex; align-items:center; gap:0.75rem; }
+.brand .logo { width:36px; height:36px; background:linear-gradient(135deg,#ffb703,#fb8500); border-radius:8px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(255,183,3,0.3); }
+.brand .name { font-weight:800; color:#ffb703; letter-spacing:1px; }
+.brand .sub { color:rgba(255,255,255,0.3); font-size:0.75rem; }
+
+.shell { display:flex; min-height:calc(100vh - 60px); }
+aside.sidebar { width:220px; background:rgba(10,20,32,0.7); backdrop-filter:blur(20px); border-right:1px solid rgba(255,183,3,0.08); padding:1rem; flex-shrink:0; overflow-y:auto; }
+.sidebar-item { display:flex; align-items:center; gap:0.75rem; padding:0.65rem 1rem; border-radius:10px; cursor:pointer; font-size:0.875rem; font-weight:500; color:rgba(255,255,255,0.5); transition:all 0.2s; margin-bottom:0.2rem; }
+.sidebar-item:hover { background:rgba(255,183,3,0.08); color:#ffb703; }
+.sidebar-item.active { background:rgba(255,183,3,0.12); color:#ffb703; font-weight:700; border-left:3px solid #ffb703; }
+.sidebar-item i { width:18px; text-align:center; }
+
+main.content { flex:1; padding:1.5rem; overflow-y:auto; }
+.card { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,183,3,0.1); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+.p-4 { padding:1rem; } .p-5 { padding:1.25rem; } .p-6 { padding:1.5rem; }
+.mb-4 { margin-bottom:1rem; } .mb-6 { margin-bottom:1.5rem; }
+.section-header { font-size:1rem; font-weight:700; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem; }
+.stat-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,183,3,0.1); border-radius: 16px; padding: 1.25rem; }
+.stat-card .num { font-size:2rem; font-weight:900; color:#ffb703; }
+.stat-card .lbl { color:rgba(255,255,255,0.35); font-size:0.78rem; font-weight:600; text-transform:uppercase; }
+
+.table-row { display: grid; padding: 0.8rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.04); align-items: center; font-size: 0.875rem; }
+.table-row:hover { background: rgba(255,183,3,0.04); cursor:pointer; }
+.table-head { background: rgba(0,0,0,0.2); border-bottom: 1px solid rgba(255,183,3,0.1); font-weight: 700; font-size: 0.72rem; color: rgba(255,183,3,0.7); text-transform: uppercase; letter-spacing: 0.07em; }
+.table-head:hover { cursor:default; background: rgba(0,0,0,0.2); }
+
+.badge { display:inline-block; padding:0.2rem 0.65rem; border-radius:20px; font-size:0.72rem; font-weight:700; }
+.badge-green { background: rgba(16,185,129,0.15); color: #34d399; border:1px solid rgba(16,185,129,0.2); }
+.badge-red { background: rgba(239,68,68,0.15); color: #f87171; border:1px solid rgba(239,68,68,0.2); }
+.badge-yellow { background: rgba(245,158,11,0.15); color: #fbbf24; border:1px solid rgba(245,158,11,0.2); }
+.badge-blue { background: rgba(255,183,3,0.12); color: #ffb703; border:1px solid rgba(255,183,3,0.2); }
+
+.tabs { display:flex; gap:0.5rem; margin-bottom:1.25rem; border-bottom:1px solid rgba(255,255,255,0.08); }
+.tab { padding:0.6rem 1rem; cursor:pointer; font-size:0.85rem; font-weight:600; color:rgba(255,255,255,0.4); border-bottom:2px solid transparent; }
+.tab.active { color:#ffb703; border-bottom-color:#ffb703; }
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+    <div class="glow"></div>
+    <div class="login-card">
+        <div class="login-logo"><i class="fas fa-graduation-cap" style="color:white;font-size:1.4rem;"></i></div>
+        <h1>EduConnect</h1>
+        <p class="sub">School Management Platform</p>
+        <div id="errorMsg" class="error-msg"></div>
+        <div class="field"><label>Username</label><input id="loginUsername" placeholder="Username"></div>
+        <div class="field"><label>PIN</label><input id="loginPin" placeholder="PIN" type="password" inputmode="numeric"></div>
+        <button onclick="ecLogin()" class="btn-primary" style="width:100%;"><i class="fas fa-sign-in-alt"></i> Sign In</button>
+    </div>
+</div>
+
+<div id="mainApp">
+    <nav class="topnav">
+        <div class="brand">
+            <div class="logo"><i class="fas fa-graduation-cap" style="color:white;font-size:1rem;"></i></div>
+            <div><div class="name">EduConnect</div><div class="sub">School Management</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:1rem;">
+            <span id="navUsername" style="color:rgba(255,255,255,0.7);font-size:0.875rem;font-weight:600;"></span>
+            <button onclick="ecLogout()" class="btn-secondary"><i class="fas fa-sign-out-alt"></i> Logout</button>
+        </div>
+    </nav>
+    <div class="shell">
+        <aside class="sidebar">
+            <div class="sidebar-item active" onclick="showModule('dashboard',this)"><i class="fas fa-tachometer-alt"></i> Dashboard</div>
+            <div class="sidebar-item" onclick="showModule('learners',this)"><i class="fas fa-id-card"></i> Learner Profiles</div>
+        </aside>
+        <main class="content">
+            <div id="mod-dashboard"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading dashboard...</p></div></div>
+            <div id="mod-learners" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading learners...</p></div></div>
+        </main>
+    </div>
+</div>
+
+<script>
+let currentUser = null;
+let currentSchoolId = null;
+let allLearners = [];
+let activeLearner = null;
+
+function showError(msg) { const el=document.getElementById('errorMsg'); el.textContent=msg; el.style.display='block'; }
+function hideError() { document.getElementById('errorMsg').style.display='none'; }
+
+async function ecLogin() {
+    hideError();
+    const username = document.getElementById('loginUsername').value.trim().toLowerCase();
+    const pin = document.getElementById('loginPin').value.trim();
+    if (!username||!pin) { showError('Enter username and PIN'); return; }
+    if (!window.sb) { showError('App still loading'); return; }
+    const email = username + '@educonnect-admin.local';
+    const password = 'EduConnect-' + username + '-' + pin;
+    const { data: authData, error: authError } = await window.sb.auth.signInWithPassword({ email, password });
+    if (authError || !authData.user) { showError('Invalid credentials'); return; }
+    const { data: profile, error: profileError } = await window.sb.from('ec_staff').select('*').eq('username',username).eq('is_active',true).single();
+    if (profileError || !profile) { showError('Account not active'); await window.sb.auth.signOut(); return; }
+    currentUser = profile;
+    currentSchoolId = profile.school_id;
+    initApp();
+}
+
+async function ecLogout() { await window.sb.auth.signOut(); location.reload(); }
+
+async function checkSession() {
+    const { data: { session } } = await window.sb.auth.getSession();
+    if (!session) return;
+    const username = session.user.email.split('@')[0];
+    const { data: profile } = await window.sb.from('ec_staff').select('*').eq('username',username).eq('is_active',true).single();
+    if (!profile) { await window.sb.auth.signOut(); return; }
+    currentUser = profile;
+    currentSchoolId = profile.school_id;
+    initApp();
+}
+
+async function initApp() {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    document.getElementById('navUsername').textContent = currentUser.full_name||currentUser.username;
+    await loadDashboard();
+}
+
+function showModule(mod, el) {
+    document.querySelectorAll('[id^="mod-"]').forEach(m => m.style.display='none');
+    document.querySelectorAll('.sidebar-item').forEach(s => s.classList.remove('active'));
+    document.getElementById('mod-'+mod).style.display = 'block';
+    if (el) el.classList.add('active');
+    if (mod==='learners') loadLearners();
+    if (mod==='dashboard') loadDashboard();
+}
+
+async function loadDashboard() {
+    const { data } = await window.sb.from('ec_learners').select('id,status').eq('school_id', currentSchoolId);
+    const learners = data||[];
+    document.getElementById('mod-dashboard').innerHTML = `
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:800;">Dashboard</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">School overview</p></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;">
+        <div class="stat-card"><p class="lbl">Total Learners</p><p class="num">${learners.length}</p></div>
+        <div class="stat-card"><p class="lbl">Active</p><p class="num">${learners.filter(l=>l.status==='active').length}</p></div>
+    </div>`;
+}
+
+async function loadLearners() {
+    const { data } = await window.sb.from('ec_learners').select('*').eq('school_id', currentSchoolId).order('full_name');
+    allLearners = data||[];
+    renderLearnersList();
+}
+
+function renderLearnersList() {
+    document.getElementById('mod-learners').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <div><h2 style="font-size:1.3rem;font-weight:800;">Learner Profiles</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">Student records and history</p></div>
+        <button onclick="showLearnerForm()" class="btn-primary"><i class="fas fa-plus"></i> Add Learner</button>
+    </div>
+    <div id="learnerFormWrap"></div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 1.5fr 1fr;"><span>Name</span><span>Grade</span><span>Class</span><span>Parent</span><span>Status</span></div>
+        <div>${allLearners.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No learners yet</div>':allLearners.map(l=>`<div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1.5fr 1fr;" onclick="viewLearner('${l.id}')"><div><p style="font-weight:600;">${l.full_name}</p><p style="font-size:0.78rem;color:rgba(255,255,255,0.35);">${l.student_number||''}</p></div><span>${l.grade||'\u2014'}</span><span>${l.class_name||'\u2014'}</span><span style="font-size:0.85rem;">${l.parent_name||'\u2014'}</span><span class="badge badge-${l.status==='active'?'green':'red'}">${l.status}</span></div>`).join('')}</div>
+    </div>`;
+}
+
+function showLearnerForm() {
+    document.getElementById('learnerFormWrap').innerHTML = `
+    <div class="card p-6 mb-6">
+        <div class="section-header"><i class="fas fa-user-plus" style="color:#ffb703;"></i> New Learner</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+            <div><label>Full Name *</label><input id="lName" placeholder="Full name"></div>
+            <div><label>Student Number</label><input id="lStudentNo" placeholder="Student number"></div>
+            <div><label>Date of Birth</label><input id="lDob" type="date"></div>
+            <div><label>Gender</label><select id="lGender"><option value="">Select...</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
+            <div><label>Grade</label><input id="lGrade" placeholder="e.g. Grade 9"></div>
+            <div><label>Class</label><input id="lClass" placeholder="e.g. 9A"></div>
+            <div style="grid-column:1/-1;"><label>Home Address</label><input id="lAddress" placeholder="Home address"></div>
+            <div><label>Parent/Guardian Name</label><input id="lParentName" placeholder="Parent name"></div>
+            <div><label>Parent Phone</label><input id="lParentPhone" placeholder="Phone number"></div>
+            <div><label>Parent Email</label><input id="lParentEmail" placeholder="Email address"></div>
+            <div><label>Secondary Guardian</label><input id="lGuardian2Name" placeholder="Name"></div>
+            <div><label>Secondary Guardian Phone</label><input id="lGuardian2Phone" placeholder="Phone"></div>
+            <div><label>Emergency Contact Name</label><input id="lEmName" placeholder="Name"></div>
+            <div><label>Emergency Contact Phone</label><input id="lEmPhone" placeholder="Phone"></div>
+            <div><label>Relation</label><input id="lEmRelation" placeholder="e.g. Aunt"></div>
+            <div><label>Blood Type</label><input id="lBlood" placeholder="e.g. O+"></div>
+            <div><label>Enrolment Date</label><input id="lEnrol" type="date"></div>
+            <div><label>Status</label><select id="lStatus"><option value="active">Active</option><option value="inactive">Inactive</option><option value="transferred">Transferred</option></select></div>
+            <div style="grid-column:1/-1;"><label>Allergies</label><textarea id="lAllergies" placeholder="Known allergies..." style="height:50px;"></textarea></div>
+            <div style="grid-column:1/-1;"><label>Medical Conditions</label><textarea id="lMedical" placeholder="Chronic conditions, medical notes..." style="height:50px;"></textarea></div>
+            <div style="grid-column:1/-1;"><label>Medication Notes</label><textarea id="lMedication" placeholder="Current medication..." style="height:50px;"></textarea></div>
+            <div style="grid-column:1/-1;"><label>General Notes</label><textarea id="lNotes" placeholder="Additional notes..." style="height:50px;"></textarea></div>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;">
+            <button onclick="addLearner()" class="btn-primary"><i class="fas fa-save"></i> Save</button>
+            <button onclick="document.getElementById('learnerFormWrap').innerHTML=''" class="btn-secondary">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function addLearner() {
+    const name = document.getElementById('lName').value.trim();
+    if (!name) { alert('Full name required'); return; }
+    const { error } = await window.sb.from('ec_learners').insert([{
+        school_id: currentSchoolId,
+        full_name: name,
+        student_number: document.getElementById('lStudentNo').value.trim(),
+        date_of_birth: document.getElementById('lDob').value||null,
+        gender: document.getElementById('lGender').value,
+        grade: document.getElementById('lGrade').value.trim(),
+        class_name: document.getElementById('lClass').value.trim(),
+        home_address: document.getElementById('lAddress').value.trim(),
+        parent_name: document.getElementById('lParentName').value.trim(),
+        parent_phone: document.getElementById('lParentPhone').value.trim(),
+        parent_email: document.getElementById('lParentEmail').value.trim(),
+        secondary_guardian_name: document.getElementById('lGuardian2Name').value.trim(),
+        secondary_guardian_phone: document.getElementById('lGuardian2Phone').value.trim(),
+        emergency_contact_name: document.getElementById('lEmName').value.trim(),
+        emergency_contact_phone: document.getElementById('lEmPhone').value.trim(),
+        emergency_contact_relation: document.getElementById('lEmRelation').value.trim(),
+        blood_type: document.getElementById('lBlood').value.trim(),
+        enrolment_date: document.getElementById('lEnrol').value||null,
+        status: document.getElementById('lStatus').value,
+        allergies: document.getElementById('lAllergies').value.trim(),
+        medical_conditions: document.getElementById('lMedical').value.trim(),
+        medication_notes: document.getElementById('lMedication').value.trim(),
+        notes: document.getElementById('lNotes').value.trim()
+    }]);
+    if (error) { alert('Error: '+error.message); return; }
+    document.getElementById('learnerFormWrap').innerHTML='';
+    await loadLearners();
+}
+
+async function viewLearner(id) {
+    const { data: learner } = await window.sb.from('ec_learners').select('*').eq('id',id).single();
+    if (!learner) return;
+    activeLearner = learner;
+    const [aRes,bRes,dRes] = await Promise.all([
+        window.sb.from('ec_academic_records').select('*').eq('learner_id',id).order('year',{ascending:false}),
+        window.sb.from('ec_behaviour_records').select('*').eq('learner_id',id).order('incident_date',{ascending:false}),
+        window.sb.from('ec_documents').select('*').eq('learner_id',id).order('created_at',{ascending:false})
+    ]);
+    renderLearnerDetail(learner, aRes.data||[], bRes.data||[], dRes.data||[], 'profile');
+}
+
+function renderLearnerDetail(l, academic, behaviour, documents, activeTab) {
+    document.getElementById('mod-learners').innerHTML = `
+    <button onclick="loadLearners()" class="btn-secondary mb-4"><i class="fas fa-arrow-left"></i> Back to List</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <div><h2 style="font-size:1.3rem;font-weight:800;">${l.full_name}</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">${l.grade||''} ${l.class_name?'\u2022 '+l.class_name:''} ${l.student_number?'\u2022 '+l.student_number:''}</p></div>
+        <span class="badge badge-${l.status==='active'?'green':'red'}">${l.status}</span>
+    </div>
+    <div class="tabs">
+        <div class="tab ${activeTab==='profile'?'active':''}" onclick="renderLearnerDetail(activeLearner,${JSON.stringify(academic)},${JSON.stringify(behaviour)},${JSON.stringify(documents)},'profile')">Profile</div>
+        <div class="tab ${activeTab==='academic'?'active':''}" onclick="renderLearnerDetail(activeLearner,${JSON.stringify(academic)},${JSON.stringify(behaviour)},${JSON.stringify(documents)},'academic')">Academic (${academic.length})</div>
+        <div class="tab ${activeTab==='behaviour'?'active':''}" onclick="renderLearnerDetail(activeLearner,${JSON.stringify(academic)},${JSON.stringify(behaviour)},${JSON.stringify(documents)},'behaviour')">Behaviour (${behaviour.length})</div>
+        <div class="tab ${activeTab==='documents'?'active':''}" onclick="renderLearnerDetail(activeLearner,${JSON.stringify(academic)},${JSON.stringify(behaviour)},${JSON.stringify(documents)},'documents')">Documents (${documents.length})</div>
+    </div>
+    <div id="tabContent"></div>`;
+
+    const tc = document.getElementById('tabContent');
+    if (activeTab==='profile') {
+        tc.innerHTML = `<div class="card p-6">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;">
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Date of Birth</p><p>${l.date_of_birth?new Date(l.date_of_birth).toLocaleDateString('en-ZA'):'\u2014'}</p></div>
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Gender</p><p>${l.gender||'\u2014'}</p></div>
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Enrolled</p><p>${l.enrolment_date?new Date(l.enrolment_date).toLocaleDateString('en-ZA'):'\u2014'}</p></div>
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Address</p><p>${l.home_address||'\u2014'}</p></div>
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Parent/Guardian</p><p>${l.parent_name||'\u2014'} ${l.parent_phone?'('+l.parent_phone+')':''}</p></div>
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Parent Email</p><p>${l.parent_email||'\u2014'}</p></div>
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Secondary Guardian</p><p>${l.secondary_guardian_name||'\u2014'} ${l.secondary_guardian_phone?'('+l.secondary_guardian_phone+')':''}</p></div>
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Emergency Contact</p><p>${l.emergency_contact_name||'\u2014'} ${l.emergency_contact_phone?'('+l.emergency_contact_phone+')':''} ${l.emergency_contact_relation?'- '+l.emergency_contact_relation:''}</p></div>
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Blood Type</p><p>${l.blood_type||'\u2014'}</p></div>
+            <div style="grid-column:1/-1;"><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Allergies</p><p>${l.allergies||'\u2014'}</p></div>
+            <div style="grid-column:1/-1;"><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Medical Conditions</p><p>${l.medical_conditions||'\u2014'}</p></div>
+            <div style="grid-column:1/-1;"><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Medication</p><p>${l.medication_notes||'\u2014'}</p></div>
+            <div style="grid-column:1/-1;"><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Notes</p><p>${l.notes||'\u2014'}</p></div>
+        </div></div>`;
+    } else if (activeTab==='academic') {
+        tc.innerHTML = `<div class="card p-6 mb-4">
+            <div class="section-header"><i class="fas fa-book" style="color:#ffb703;"></i> Add Academic Record</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:1rem;">
+                <div><label>Term</label><input id="aTerm" placeholder="e.g. Term 1"></div>
+                <div><label>Year</label><input id="aYear" type="number" placeholder="2026"></div>
+                <div><label>Subject</label><input id="aSubject" placeholder="Subject"></div>
+                <div><label>Mark (%)</label><input id="aMark" type="number" placeholder="0-100"></div>
+                <div style="grid-column:1/-1;"><label>Comments</label><input id="aComments" placeholder="Comments"></div>
+            </div>
+            <button onclick="addAcademicRecord('${l.id}')" class="btn-primary" style="margin-top:1rem;"><i class="fas fa-plus"></i> Add Record</button>
+        </div>
+        <div class="card" style="overflow:hidden;">
+            <div class="table-row table-head" style="grid-template-columns:1fr 1fr 1fr 1fr 2fr;"><span>Term</span><span>Year</span><span>Subject</span><span>Mark</span><span>Comments</span></div>
+            <div>${academic.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No academic records</div>':academic.map(a=>`<div class="table-row" style="grid-template-columns:1fr 1fr 1fr 1fr 2fr;"><span>${a.term||'\u2014'}</span><span>${a.year||'\u2014'}</span><span>${a.subject||'\u2014'}</span><span style="font-weight:700;color:#ffb703;">${a.mark!=null?a.mark+'%':'\u2014'}</span><span style="font-size:0.8rem;color:rgba(255,255,255,0.5);">${a.comments||'\u2014'}</span></div>`).join('')}</div>
+        </div>`;
+    } else if (activeTab==='behaviour') {
+        tc.innerHTML = `<div class="card p-6 mb-4">
+            <div class="section-header"><i class="fas fa-triangle-exclamation" style="color:#ffb703;"></i> Add Behaviour Record</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+                <div><label>Type</label><select id="bType"><option value="warning">Warning</option><option value="detention">Detention</option><option value="suspension">Suspension</option><option value="bullying_report">Bullying Report</option><option value="award">Award / Positive</option></select></div>
+                <div><label>Date</label><input id="bDate" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+                <div><label>Severity</label><select id="bSeverity"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="">N/A</option></select></div>
+                <div style="grid-column:1/-1;"><label>Description</label><textarea id="bDescription" placeholder="What happened..." style="height:60px;"></textarea></div>
+                <div style="grid-column:1/-1;"><label>Action Taken</label><input id="bAction" placeholder="Action taken"></div>
+            </div>
+            <button onclick="addBehaviourRecord('${l.id}')" class="btn-primary" style="margin-top:1rem;"><i class="fas fa-plus"></i> Add Record</button>
+        </div>
+        <div class="card" style="overflow:hidden;">
+            <div class="table-row table-head" style="grid-template-columns:1fr 1fr 2fr 1fr 1fr;"><span>Date</span><span>Type</span><span>Description</span><span>Severity</span><span>Action</span></div>
+            <div>${behaviour.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No behaviour records</div>':behaviour.map(b=>`<div class="table-row" style="grid-template-columns:1fr 1fr 2fr 1fr 1fr;"><span style="font-size:0.85rem;">${b.incident_date?new Date(b.incident_date).toLocaleDateString('en-ZA'):'\u2014'}</span><span class="badge badge-${b.record_type==='award'?'green':'blue'}">${b.record_type.replace('_',' ')}</span><span style="font-size:0.85rem;">${b.description||'\u2014'}</span><span class="badge badge-${b.severity==='high'?'red':b.severity==='medium'?'yellow':'blue'}">${b.severity||'\u2014'}</span><span style="font-size:0.8rem;color:rgba(255,255,255,0.5);">${b.action_taken||'\u2014'}</span></div>`).join('')}</div>
+        </div>`;
+    } else if (activeTab==='documents') {
+        tc.innerHTML = `<div class="card p-6 mb-4">
+            <div class="section-header"><i class="fas fa-file" style="color:#ffb703;"></i> Add Document Reference</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:1rem;">
+                <div><label>Type</label><input id="dType" placeholder="e.g. Birth Certificate"></div>
+                <div><label>Name</label><input id="dName" placeholder="Document name"></div>
+                <div><label>File URL</label><input id="dUrl" placeholder="Link to file (if hosted elsewhere)"></div>
+            </div>
+            <button onclick="addDocument('${l.id}')" class="btn-primary" style="margin-top:1rem;"><i class="fas fa-plus"></i> Add Document</button>
+        </div>
+        <div class="card" style="overflow:hidden;">
+            <div class="table-row table-head" style="grid-template-columns:1fr 1.5fr 1.5fr 1fr;"><span>Type</span><span>Name</span><span>Link</span><span>Added</span></div>
+            <div>${documents.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No documents</div>':documents.map(d=>`<div class="table-row" style="grid-template-columns:1fr 1.5fr 1.5fr 1fr;"><span>${d.document_type||'\u2014'}</span><span>${d.document_name||'\u2014'}</span><span style="font-size:0.8rem;">${d.file_url?`<a href="${d.file_url}" target="_blank" style="color:#ffb703;">View</a>`:'\u2014'}</span><span style="font-size:0.8rem;color:rgba(255,255,255,0.5);">${new Date(d.created_at).toLocaleDateString('en-ZA')}</span></div>`).join('')}</div>
+        </div>`;
+    }
+}
+
+async function addAcademicRecord(learnerId) {
+    const { error } = await window.sb.from('ec_academic_records').insert([{
+        learner_id: learnerId, school_id: currentSchoolId,
+        term: document.getElementById('aTerm').value.trim(),
+        year: parseInt(document.getElementById('aYear').value)||null,
+        subject: document.getElementById('aSubject').value.trim(),
+        mark: parseFloat(document.getElementById('aMark').value)||null,
+        comments: document.getElementById('aComments').value.trim(),
+        recorded_by: currentUser.full_name||currentUser.username
+    }]);
+    if (error) { alert('Error: '+error.message); return; }
+    await viewLearner(learnerId);
+}
+
+async function addBehaviourRecord(learnerId) {
+    const { error } = await window.sb.from('ec_behaviour_records').insert([{
+        learner_id: learnerId, school_id: currentSchoolId,
+        record_type: document.getElementById('bType').value,
+        incident_date: document.getElementById('bDate').value||null,
+        severity: document.getElementById('bSeverity').value,
+        description: document.getElementById('bDescription').value.trim(),
+        action_taken: document.getElementById('bAction').value.trim(),
+        recorded_by: currentUser.full_name||currentUser.username
+    }]);
+    if (error) { alert('Error: '+error.message); return; }
+    await viewLearner(learnerId);
+}
+
+async function addDocument(learnerId) {
+    const { error } = await window.sb.from('ec_documents').insert([{
+        learner_id: learnerId, school_id: currentSchoolId,
+        document_type: document.getElementById('dType').value.trim(),
+        document_name: document.getElementById('dName').value.trim(),
+        file_url: document.getElementById('dUrl').value.trim(),
+        uploaded_by: currentUser.full_name||currentUser.username
+    }]);
+    if (error) { alert('Error: '+error.message); return; }
+    await viewLearner(learnerId);
+}
+
+checkSession();
+</script>
+</body>
+</html>

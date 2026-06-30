@@ -107,6 +107,7 @@ main.content { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="sidebar-item" onclick="showModule('attendance',this)"><i class="fas fa-calendar-check"></i> Attendance</div>
             <div class="sidebar-item" onclick="showModule('discipline',this)"><i class="fas fa-triangle-exclamation"></i> Discipline</div>
             <div class="sidebar-item" onclick="showModule('staff',this)"><i class="fas fa-chalkboard-teacher"></i> Staff</div>
+            <div class="sidebar-item" onclick="showModule('fees',this)"><i class="fas fa-money-bill-wave"></i> School Fees</div>
         </aside>
         <main class="content">
             <div id="mod-dashboard"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading dashboard...</p></div></div>
@@ -114,6 +115,7 @@ main.content { flex:1; padding:1.5rem; overflow-y:auto; }
             <div id="mod-attendance" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading attendance...</p></div></div>
             <div id="mod-discipline" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading discipline...</p></div></div>
             <div id="mod-staff" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading staff...</p></div></div>
+            <div id="mod-fees" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading fees...</p></div></div>
         </main>
     </div>
 </div>
@@ -173,6 +175,7 @@ function showModule(mod, el) {
     if (mod==='attendance') loadAttendance();
     if (mod==='discipline') loadDiscipline();
     if (mod==='staff') loadStaff();
+    if (mod==='fees') loadFees();
     if (mod==='dashboard') loadDashboard();
 }
 
@@ -823,6 +826,168 @@ async function showLeaveOverview() {
 async function updateLeaveOverview(leaveId, status) {
     await window.sb.from('ec_leave_requests').update({status, approved_by: currentUser.full_name||currentUser.username}).eq('id', leaveId);
     await showLeaveOverview();
+}
+
+
+async function loadFees(filter='outstanding') {
+    let query = window.sb.from('ec_fees').select('*').eq('school_id', currentSchoolId).order('due_date');
+    if (filter !== 'all') query = query.eq('status', filter);
+    const { data: fees } = await query;
+    const { data: allFees } = await window.sb.from('ec_fees').select('amount,status').eq('school_id', currentSchoolId);
+    const { data: payments } = await window.sb.from('ec_fee_payments').select('amount_paid').eq('school_id', currentSchoolId);
+    const totalBilled = (allFees||[]).reduce((s,f)=>s+parseFloat(f.amount||0),0);
+    const totalPaid = (payments||[]).reduce((s,p)=>s+parseFloat(p.amount_paid||0),0);
+    const totalOutstanding = (allFees||[]).filter(f=>f.status==='outstanding').reduce((s,f)=>s+parseFloat(f.amount||0),0);
+    renderFees(fees||[], filter, totalBilled, totalPaid, totalOutstanding);
+}
+
+function renderFees(fees, filter, totalBilled, totalPaid, totalOutstanding) {
+    document.getElementById('mod-fees').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <div><h2 style="font-size:1.3rem;font-weight:800;">School Fees</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">Balances, payments and receipts</p></div>
+        <button onclick="showFeeForm()" class="btn-primary"><i class="fas fa-plus"></i> Add Fee</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Total Billed</p><p class="num">R${totalBilled.toFixed(2)}</p></div>
+        <div class="stat-card"><p class="lbl">Total Collected</p><p class="num" style="color:#34d399;">R${totalPaid.toFixed(2)}</p></div>
+        <div class="stat-card"><p class="lbl">Outstanding</p><p class="num" style="color:#f87171;">R${totalOutstanding.toFixed(2)}</p></div>
+        <div class="stat-card"><p class="lbl">Collection Rate</p><p class="num" style="color:#fbbf24;">${totalBilled>0?Math.round((totalPaid/totalBilled)*100):0}%</p></div>
+    </div>
+    <div id="feeFormWrap"></div>
+    <div class="card p-4 mb-6">
+        <div style="display:flex;gap:0.75rem;">
+            <button onclick="loadFees('outstanding')" class="btn-${filter==='outstanding'?'primary':'secondary'}" style="padding:0.5rem 1rem;font-size:0.85rem;">Outstanding</button>
+            <button onclick="loadFees('paid')" class="btn-${filter==='paid'?'primary':'secondary'}" style="padding:0.5rem 1rem;font-size:0.85rem;">Paid</button>
+            <button onclick="loadFees('partial')" class="btn-${filter==='partial'?'primary':'secondary'}" style="padding:0.5rem 1rem;font-size:0.85rem;">Partial</button>
+            <button onclick="loadFees('all')" class="btn-${filter==='all'?'primary':'secondary'}" style="padding:0.5rem 1rem;font-size:0.85rem;">All</button>
+        </div>
+    </div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 80px;"><span>Learner</span><span>Type</span><span>Amount</span><span>Due</span><span>Status</span><span></span></div>
+        <div>${fees.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No fee records</div>':fees.map(f=>`
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 80px;">
+            <div><p style="font-weight:600;">${f.learner_name||'\u2014'}</p><p style="font-size:0.78rem;color:rgba(255,255,255,0.35);">${f.grade||''}</p></div>
+            <span style="font-size:0.85rem;">${f.fee_type}</span>
+            <span style="font-weight:700;color:#ffb703;">R${parseFloat(f.amount||0).toFixed(2)}</span>
+            <span style="font-size:0.85rem;">${f.due_date?new Date(f.due_date).toLocaleDateString('en-ZA'):'\u2014'}</span>
+            <span class="badge badge-${f.status==='paid'?'green':f.status==='partial'?'yellow':'red'}">${f.status}</span>
+            <button onclick="showPaymentForm('${f.id}','${f.learner_name}','${f.learner_id}',${f.amount})" class="btn-success" style="padding:0.3rem 0.6rem;font-size:0.75rem;" title="Record payment"><i class="fas fa-hand-holding-dollar"></i></button>
+        </div>`).join('')}
+        </div>
+    </div>
+    <div id="paymentFormWrap"></div>`;
+}
+
+function showFeeForm() {
+    document.getElementById('feeFormWrap').innerHTML = `
+    <div class="card p-6 mb-6">
+        <div class="section-header"><i class="fas fa-plus" style="color:#ffb703;"></i> Add Fee</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+            <div><label>Learner</label><select id="ffLearner"><option value="">Select learner...</option>${allLearners.map(l=>`<option value="${l.id}" data-name="${l.full_name}" data-grade="${l.grade||''}">${l.full_name} (${l.grade||''})</option>`).join('')}</select></div>
+            <div><label>Fee Type</label><select id="ffType"><option value="tuition">Tuition</option><option value="registration">Registration</option><option value="sport">Sport</option><option value="excursion">Excursion</option><option value="uniform">Uniform</option><option value="other">Other</option></select></div>
+            <div><label>Amount (R)</label><input id="ffAmount" type="number" placeholder="0.00"></div>
+            <div><label>Due Date</label><input id="ffDue" type="date"></div>
+            <div><label>Status</label><select id="ffStatus"><option value="outstanding">Outstanding</option><option value="partial">Partial</option><option value="paid">Paid</option></select></div>
+            <div style="grid-column:1/-1;"><label>Description</label><input id="ffDesc" placeholder="Description"></div>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;">
+            <button onclick="addFee()" class="btn-primary"><i class="fas fa-save"></i> Save</button>
+            <button onclick="document.getElementById('feeFormWrap').innerHTML=''" class="btn-secondary">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function addFee() {
+    const sel = document.getElementById('ffLearner');
+    if (!sel.value) { alert('Select a learner'); return; }
+    const amount = parseFloat(document.getElementById('ffAmount').value);
+    if (!amount) { alert('Amount required'); return; }
+    const opt = sel.options[sel.selectedIndex];
+    const { error } = await window.sb.from('ec_fees').insert([{
+        school_id: currentSchoolId,
+        learner_id: sel.value,
+        learner_name: opt.dataset.name||'',
+        grade: opt.dataset.grade||'',
+        fee_type: document.getElementById('ffType').value,
+        description: document.getElementById('ffDesc').value.trim(),
+        amount: amount,
+        due_date: document.getElementById('ffDue').value||null,
+        status: document.getElementById('ffStatus').value
+    }]);
+    if (error) { alert('Error: '+error.message); return; }
+    document.getElementById('feeFormWrap').innerHTML='';
+    await loadFees();
+}
+
+function showPaymentForm(feeId, learnerName, learnerId, feeAmount) {
+    document.getElementById('paymentFormWrap').innerHTML = `
+    <div class="card p-6 mt-4">
+        <div class="section-header"><i class="fas fa-hand-holding-dollar" style="color:#ffb703;"></i> Record Payment — ${learnerName}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:1rem;">
+            <div><label>Amount Paid (R)</label><input id="pyAmount" type="number" placeholder="0.00" value="${feeAmount}"></div>
+            <div><label>Payment Date</label><input id="pyDate" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+            <div><label>Method</label><select id="pyMethod"><option value="cash">Cash</option><option value="eft">EFT</option><option value="card">Card</option><option value="online">Online</option></select></div>
+            <div><label>Reference</label><input id="pyRef" placeholder="Receipt/EFT ref"></div>
+            <div style="grid-column:1/-1;"><label>Notes</label><input id="pyNotes" placeholder="Notes"></div>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;">
+            <button onclick="recordPayment('${feeId}','${learnerId}','${learnerName}',${feeAmount})" class="btn-primary"><i class="fas fa-save"></i> Record Payment</button>
+            <button onclick="document.getElementById('paymentFormWrap').innerHTML=''" class="btn-secondary">Cancel</button>
+        </div>
+    </div>`;
+    document.getElementById('paymentFormWrap').scrollIntoView({behavior:'smooth'});
+}
+
+async function recordPayment(feeId, learnerId, learnerName, feeAmount) {
+    const amountPaid = parseFloat(document.getElementById('pyAmount').value);
+    if (!amountPaid) { alert('Amount required'); return; }
+    const date = document.getElementById('pyDate').value;
+    if (!date) { alert('Date required'); return; }
+    const { error: payError } = await window.sb.from('ec_fee_payments').insert([{
+        school_id: currentSchoolId,
+        learner_id: learnerId,
+        fee_id: feeId,
+        learner_name: learnerName,
+        amount_paid: amountPaid,
+        payment_date: date,
+        payment_method: document.getElementById('pyMethod').value,
+        reference: document.getElementById('pyRef').value.trim(),
+        notes: document.getElementById('pyNotes').value.trim(),
+        received_by: currentUser.full_name||currentUser.username
+    }]);
+    if (payError) { alert('Error: '+payError.message); return; }
+    const newStatus = amountPaid >= feeAmount ? 'paid' : 'partial';
+    await window.sb.from('ec_fees').update({status: newStatus}).eq('id', feeId);
+    document.getElementById('paymentFormWrap').innerHTML='';
+    printReceipt(learnerName, amountPaid, document.getElementById('pyMethod')?.value||'cash', document.getElementById('pyRef')?.value||'', date);
+    await loadFees();
+}
+
+function printReceipt(learnerName, amount, method, reference, date) {
+    const w = window.open('','_blank','width=400,height=500');
+    w.document.write(`<!DOCTYPE html><html><head><title>Receipt</title>
+    <style>
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body { font-family:-apple-system,sans-serif; padding:2rem; color:#1a202c; }
+        h1 { font-size:1.2rem; font-weight:900; color:#fb8500; text-align:center; margin-bottom:0.25rem; }
+        .sub { text-align:center; color:#64748b; font-size:0.8rem; margin-bottom:1.5rem; }
+        .row { display:flex; justify-content:space-between; padding:0.5rem 0; border-bottom:1px solid #f1f5f9; font-size:0.9rem; }
+        .label { color:#64748b; }
+        .amount { font-size:1.5rem; font-weight:900; color:#fb8500; text-align:center; margin:1rem 0; }
+        .footer { text-align:center; color:#94a3b8; font-size:0.75rem; margin-top:1.5rem; }
+        @media print { body { padding:1rem; } }
+    </style></head><body>
+    <h1>EduConnect</h1>
+    <p class="sub">Payment Receipt</p>
+    <div class="amount">R${parseFloat(amount).toFixed(2)}</div>
+    <div class="row"><span class="label">Learner</span><span>${learnerName}</span></div>
+    <div class="row"><span class="label">Date</span><span>${new Date(date).toLocaleDateString('en-ZA')}</span></div>
+    <div class="row"><span class="label">Method</span><span>${method}</span></div>
+    <div class="row"><span class="label">Reference</span><span>${reference||'\u2014'}</span></div>
+    <p class="footer">Thank you for your payment</p>
+    <script>window.onload=()=>{window.print();}<\/script>
+    </body></html>`);
+    w.document.close();
 }
 
 checkSession();

@@ -105,11 +105,13 @@ main.content { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="sidebar-item active" onclick="showModule('dashboard',this)"><i class="fas fa-tachometer-alt"></i> Dashboard</div>
             <div class="sidebar-item" onclick="showModule('learners',this)"><i class="fas fa-id-card"></i> Learner Profiles</div>
             <div class="sidebar-item" onclick="showModule('attendance',this)"><i class="fas fa-calendar-check"></i> Attendance</div>
+            <div class="sidebar-item" onclick="showModule('discipline',this)"><i class="fas fa-triangle-exclamation"></i> Discipline</div>
         </aside>
         <main class="content">
             <div id="mod-dashboard"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading dashboard...</p></div></div>
             <div id="mod-learners" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading learners...</p></div></div>
             <div id="mod-attendance" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading attendance...</p></div></div>
+            <div id="mod-discipline" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading discipline...</p></div></div>
         </main>
     </div>
 </div>
@@ -167,6 +169,7 @@ function showModule(mod, el) {
     if (el) el.classList.add('active');
     if (mod==='learners') loadLearners();
     if (mod==='attendance') loadAttendance();
+    if (mod==='discipline') loadDiscipline();
     if (mod==='dashboard') loadDashboard();
 }
 
@@ -499,6 +502,111 @@ async function saveRegister(className, date) {
     const { error } = await window.sb.from('ec_attendance').upsert(upserts, {onConflict: 'id'});
     if (error) { alert('Error saving: '+error.message); return; }
     await loadClassRegister(className, date);
+}
+
+
+async function loadDiscipline(filters={}) {
+    const typeFilter = filters.type||'all';
+    const severityFilter = filters.severity||'all';
+    const fromFilter = filters.from||'';
+    const toFilter = filters.to||'';
+
+    let query = window.sb.from('ec_behaviour_records').select('*').eq('school_id', currentSchoolId).order('incident_date',{ascending:false});
+    if (typeFilter!=='all') query = query.eq('record_type', typeFilter);
+    if (severityFilter!=='all') query = query.eq('severity', severityFilter);
+    if (fromFilter) query = query.gte('incident_date', fromFilter);
+    if (toFilter) query = query.lte('incident_date', toFilter);
+
+    const { data } = await query;
+    const records = data||[];
+
+    // Pattern analysis
+    const typeCounts={};
+    const offenderCounts={};
+    records.forEach(r=>{
+        typeCounts[r.record_type]=(typeCounts[r.record_type]||0)+1;
+        if(r.record_type!=='award'){
+            offenderCounts[r.learner_id]=offenderCounts[r.learner_id]||{name:r.recorded_by,count:0,learner_id:r.learner_id};
+            offenderCounts[r.learner_id].count++;
+        }
+    });
+    const topTypes=Object.entries(typeCounts).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    const repeatOffenders=Object.values(offenderCounts).filter(o=>o.count>1).sort((a,b)=>b.count-a.count).slice(0,5);
+
+    // Get learner names for repeat offenders
+    const offenderIds=repeatOffenders.map(o=>o.learner_id);
+    let learnerNames={};
+    if(offenderIds.length>0){
+        const {data:lData}=await window.sb.from('ec_learners').select('id,full_name').in('id',offenderIds);
+        (lData||[]).forEach(l=>learnerNames[l.id]=l.full_name);
+    }
+
+    const incidents=records.filter(r=>r.record_type!=='award');
+    const awards=records.filter(r=>r.record_type==='award');
+
+    document.getElementById('mod-discipline').innerHTML = `
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:800;">Discipline Module</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">Incidents, patterns and positive behaviour</p></div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Total Incidents</p><p class="num" style="color:#f87171;">${incidents.length}</p></div>
+        <div class="stat-card"><p class="lbl">Awards</p><p class="num" style="color:#34d399;">${awards.length}</p></div>
+        <div class="stat-card"><p class="lbl">Suspensions</p><p class="num" style="color:#f87171;">${records.filter(r=>r.record_type==='suspension').length}</p></div>
+        <div class="stat-card"><p class="lbl">Repeat Offenders</p><p class="num" style="color:#fbbf24;">${repeatOffenders.length}</p></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;">
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-chart-bar" style="color:#ffb703;"></i> Most Common Incidents</div>
+            ${topTypes.length===0?'<p style="color:rgba(255,255,255,0.25);font-size:0.875rem;">No data</p>':topTypes.map(([type,count])=>`
+            <div style="display:flex;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+                <span style="font-size:0.875rem;">${type.replace(/_/g,' ')}</span>
+                <span class="badge badge-blue">${count}</span>
+            </div>`).join('')}
+        </div>
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-user-xmark" style="color:#f87171;"></i> Repeat Offenders</div>
+            ${repeatOffenders.length===0?'<p style="color:rgba(255,255,255,0.25);font-size:0.875rem;">No repeat offenders</p>':repeatOffenders.map(o=>`
+            <div style="display:flex;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+                <span style="font-size:0.875rem;">${learnerNames[o.learner_id]||'Unknown'}</span>
+                <span class="badge badge-red">${o.count} incidents</span>
+            </div>`).join('')}
+        </div>
+    </div>
+
+    <div class="card p-5 mb-6">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:1rem;align-items:flex-end;">
+            <div><label>Type</label><select id="dTypeFilter">
+                <option value="all" ${typeFilter==='all'?'selected':''}>All Types</option>
+                <option value="warning" ${typeFilter==='warning'?'selected':''}>Warning</option>
+                <option value="detention" ${typeFilter==='detention'?'selected':''}>Detention</option>
+                <option value="suspension" ${typeFilter==='suspension'?'selected':''}>Suspension</option>
+                <option value="bullying_report" ${typeFilter==='bullying_report'?'selected':''}>Bullying Report</option>
+                <option value="award" ${typeFilter==='award'?'selected':''}>Award</option>
+            </select></div>
+            <div><label>Severity</label><select id="dSevFilter">
+                <option value="all" ${severityFilter==='all'?'selected':''}>All</option>
+                <option value="low" ${severityFilter==='low'?'selected':''}>Low</option>
+                <option value="medium" ${severityFilter==='medium'?'selected':''}>Medium</option>
+                <option value="high" ${severityFilter==='high'?'selected':''}>High</option>
+            </select></div>
+            <div><label>From</label><input id="dFrom" type="date" value="${fromFilter}"></div>
+            <div><label>To</label><input id="dTo" type="date" value="${toFilter}"></div>
+            <button onclick="loadDiscipline({type:document.getElementById('dTypeFilter').value,severity:document.getElementById('dSevFilter').value,from:document.getElementById('dFrom').value,to:document.getElementById('dTo').value})" class="btn-primary"><i class="fas fa-filter"></i> Filter</button>
+        </div>
+    </div>
+
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 1fr 2fr;"><span>Learner</span><span>Type</span><span>Date</span><span>Severity</span><span>Description</span></div>
+        <div>${records.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No records found</div>':records.map(r=>`
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 2fr;">
+            <span style="font-weight:600;font-size:0.875rem;">${r.learner_name||learnerNames[r.learner_id]||'\u2014'}</span>
+            <span class="badge badge-${r.record_type==='award'?'green':'blue'}">${r.record_type.replace(/_/g,' ')}</span>
+            <span style="font-size:0.85rem;">${r.incident_date?new Date(r.incident_date).toLocaleDateString('en-ZA'):'\u2014'}</span>
+            <span class="badge badge-${r.severity==='high'?'red':r.severity==='medium'?'yellow':'blue'}">${r.severity||'\u2014'}</span>
+            <span style="font-size:0.8rem;color:rgba(255,255,255,0.5);">${(r.description||'\u2014').substring(0,60)}${(r.description||'').length>60?'...':''}</span>
+        </div>`).join('')}
+        </div>
+    </div>`;
 }
 
 checkSession();

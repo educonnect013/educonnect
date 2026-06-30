@@ -104,10 +104,12 @@ main.content { flex:1; padding:1.5rem; overflow-y:auto; }
         <aside class="sidebar">
             <div class="sidebar-item active" onclick="showModule('dashboard',this)"><i class="fas fa-tachometer-alt"></i> Dashboard</div>
             <div class="sidebar-item" onclick="showModule('learners',this)"><i class="fas fa-id-card"></i> Learner Profiles</div>
+            <div class="sidebar-item" onclick="showModule('attendance',this)"><i class="fas fa-calendar-check"></i> Attendance</div>
         </aside>
         <main class="content">
             <div id="mod-dashboard"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading dashboard...</p></div></div>
             <div id="mod-learners" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading learners...</p></div></div>
+            <div id="mod-attendance" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading attendance...</p></div></div>
         </main>
     </div>
 </div>
@@ -164,6 +166,7 @@ function showModule(mod, el) {
     document.getElementById('mod-'+mod).style.display = 'block';
     if (el) el.classList.add('active');
     if (mod==='learners') loadLearners();
+    if (mod==='attendance') loadAttendance();
     if (mod==='dashboard') loadDashboard();
 }
 
@@ -397,6 +400,105 @@ async function addDocument(learnerId) {
     }]);
     if (error) { alert('Error: '+error.message); return; }
     await viewLearner(learnerId);
+}
+
+
+async function loadAttendance() {
+    const today = new Date().toISOString().split('T')[0];
+    const { data: classes } = await window.sb.from('ec_learners').select('class_name').eq('school_id', currentSchoolId).eq('status','active').neq('class_name','');
+    const uniqueClasses = [...new Set((classes||[]).map(l=>l.class_name).filter(Boolean))].sort();
+    renderAttendanceShell(uniqueClasses, today, null, []);
+}
+
+async function loadClassRegister(className, date) {
+    const { data: learners } = await window.sb.from('ec_learners').select('id,full_name,grade,class_name').eq('school_id', currentSchoolId).eq('class_name', className).eq('status','active').order('full_name');
+    const { data: existing } = await window.sb.from('ec_attendance').select('*').eq('school_id', currentSchoolId).eq('class_name', className).eq('date', date);
+    const { data: classes } = await window.sb.from('ec_learners').select('class_name').eq('school_id', currentSchoolId).eq('status','active').neq('class_name','');
+    const uniqueClasses = [...new Set((classes||[]).map(l=>l.class_name).filter(Boolean))].sort();
+    renderAttendanceShell(uniqueClasses, date, className, learners||[], existing||[]);
+}
+
+function renderAttendanceShell(classes, date, selectedClass, learners, existing=[]) {
+    const statuses = ['present','absent','late','early_departure'];
+    const summary = {present:0, absent:0, late:0, early_departure:0};
+    (existing||[]).forEach(r => { if(summary[r.status]!==undefined) summary[r.status]++; });
+
+    document.getElementById('mod-attendance').innerHTML = `
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:800;">Digital Attendance</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">Daily class register</p></div>
+    <div class="card p-5 mb-6">
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:1rem;align-items:flex-end;">
+            <div><label>Class</label><select id="attClass" onchange="loadClassRegister(this.value,document.getElementById('attDate').value)">
+                <option value="">Select class...</option>${classes.map(c=>`<option value="${c}" ${c===selectedClass?'selected':''}>${c}</option>`).join('')}
+            </select></div>
+            <div><label>Date</label><input id="attDate" type="date" value="${date}" onchange="if(document.getElementById('attClass').value) loadClassRegister(document.getElementById('attClass').value,this.value)"></div>
+            <button onclick="loadClassRegister(document.getElementById('attClass').value,document.getElementById('attDate').value)" class="btn-primary"><i class="fas fa-search"></i> Load</button>
+        </div>
+    </div>
+    ${selectedClass ? `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Present</p><p class="num" style="color:#34d399;">${summary.present}</p></div>
+        <div class="stat-card"><p class="lbl">Absent</p><p class="num" style="color:#f87171;">${summary.absent}</p></div>
+        <div class="stat-card"><p class="lbl">Late</p><p class="num" style="color:#fbbf24;">${summary.late}</p></div>
+        <div class="stat-card"><p class="lbl">Early Dep.</p><p class="num" style="color:#a78bfa;">${summary.early_departure}</p></div>
+    </div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 2fr 80px;"><span>Learner</span><span>Status</span><span>Time</span><span>Reason/Notes</span><span></span></div>
+        <div id="registerRows">${learners.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No learners in this class</div>':learners.map(l=>{
+            const rec = (existing||[]).find(r=>r.learner_id===l.id);
+            return `<div class="table-row" style="grid-template-columns:2fr 1fr 1fr 2fr 80px;" id="row-${l.id}">
+                <div><p style="font-weight:600;font-size:0.875rem;">${l.full_name}</p></div>
+                <select id="status-${l.id}" style="padding:0.3rem 0.5rem;font-size:0.8rem;width:auto;" onchange="updateRowTime('${l.id}')">
+                    <option value="present" ${(!rec||rec.status==='present')?'selected':''}>Present</option>
+                    <option value="absent" ${rec&&rec.status==='absent'?'selected':''}>Absent</option>
+                    <option value="late" ${rec&&rec.status==='late'?'selected':''}>Late</option>
+                    <option value="early_departure" ${rec&&rec.status==='early_departure'?'selected':''}>Early Dep.</option>
+                </select>
+                <input id="time-${l.id}" type="time" value="${rec&&rec.arrival_time?rec.arrival_time.substring(0,5):''}" style="padding:0.3rem 0.5rem;font-size:0.8rem;width:auto;">
+                <input id="notes-${l.id}" placeholder="Reason/notes" value="${rec&&rec.absence_reason?rec.absence_reason:''}" style="padding:0.3rem 0.5rem;font-size:0.8rem;">
+                <span style="font-size:0.75rem;color:${rec?'#34d399':'rgba(255,255,255,0.2)'};">${rec?'Saved':'—'}</span>
+            </div>`;
+        }).join('')}</div>
+    </div>
+    <div style="margin-top:1rem;display:flex;gap:0.75rem;">
+        <button onclick="saveRegister('${selectedClass}','${date}')" class="btn-primary"><i class="fas fa-save"></i> Save Register</button>
+        <button onclick="markAllPresent()" class="btn-secondary"><i class="fas fa-check-double"></i> Mark All Present</button>
+    </div>` : ''}`;
+}
+
+function markAllPresent() {
+    document.querySelectorAll('[id^="status-"]').forEach(sel => sel.value = 'present');
+}
+
+async function saveRegister(className, date) {
+    const learnerSelects = document.querySelectorAll('[id^="status-"]');
+    if (learnerSelects.length === 0) { alert('No learners to save'); return; }
+
+    const { data: learners } = await window.sb.from('ec_learners').select('id,full_name,grade,class_name').eq('school_id', currentSchoolId).eq('class_name', className).eq('status','active');
+    const { data: existing } = await window.sb.from('ec_attendance').select('id,learner_id').eq('school_id', currentSchoolId).eq('class_name', className).eq('date', date);
+
+    const upserts = (learners||[]).map(l => {
+        const status = document.getElementById('status-'+l.id)?.value || 'present';
+        const time = document.getElementById('time-'+l.id)?.value || null;
+        const notes = document.getElementById('notes-'+l.id)?.value.trim() || null;
+        const existingRec = (existing||[]).find(r=>r.learner_id===l.id);
+        return {
+            ...(existingRec ? {id: existingRec.id} : {}),
+            school_id: currentSchoolId,
+            learner_id: l.id,
+            learner_name: l.full_name,
+            grade: l.grade,
+            class_name: className,
+            date: date,
+            status: status,
+            arrival_time: time||null,
+            absence_reason: notes||null,
+            recorded_by: currentUser.full_name||currentUser.username
+        };
+    });
+
+    const { error } = await window.sb.from('ec_attendance').upsert(upserts, {onConflict: 'id'});
+    if (error) { alert('Error saving: '+error.message); return; }
+    await loadClassRegister(className, date);
 }
 
 checkSession();

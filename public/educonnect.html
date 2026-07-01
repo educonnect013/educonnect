@@ -186,13 +186,105 @@ function showModule(mod, el) {
 }
 
 async function loadDashboard() {
-    const { data } = await window.sb.from('ec_learners').select('id,status').eq('school_id', currentSchoolId);
-    const learners = data||[];
+    const today = new Date().toISOString().split('T')[0];
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+
+    const [lRes,sRes,attRes,incRes,feeRes,payRes,hwRes,leaveRes,assessRes] = await Promise.all([
+        window.sb.from('ec_learners').select('id,status').eq('school_id', currentSchoolId),
+        window.sb.from('ec_staff_profiles').select('id,status').eq('school_id', currentSchoolId),
+        window.sb.from('ec_attendance').select('status,date').eq('school_id', currentSchoolId).eq('date', today),
+        window.sb.from('ec_behaviour_records').select('id,record_type,created_at').eq('school_id', currentSchoolId).gte('created_at', monthStart.toISOString()),
+        window.sb.from('ec_fees').select('amount,status').eq('school_id', currentSchoolId),
+        window.sb.from('ec_fee_payments').select('amount_paid,created_at').eq('school_id', currentSchoolId).gte('created_at', monthStart.toISOString()),
+        window.sb.from('ec_homework').select('id,status,due_date').eq('school_id', currentSchoolId).eq('status','active'),
+        window.sb.from('ec_leave_requests').select('id,status').eq('school_id', currentSchoolId).eq('status','pending'),
+        window.sb.from('ec_assessments').select('percentage,subject').eq('school_id', currentSchoolId)
+    ]);
+
+    const learners = lRes.data||[];
+    const staff = sRes.data||[];
+    const todayAtt = attRes.data||[];
+    const incidents = incRes.data||[];
+    const fees = feeRes.data||[];
+    const payments = payRes.data||[];
+    const homework = hwRes.data||[];
+    const pendingLeave = leaveRes.data||[];
+    const assessments = assessRes.data||[];
+
+    const activeLearners = learners.filter(l=>l.status==='active').length;
+    const attRate = todayAtt.length>0?Math.round((todayAtt.filter(a=>a.status==='present').length/todayAtt.length)*100):null;
+    const totalOutstanding = fees.filter(f=>f.status==='outstanding').reduce((s,f)=>s+parseFloat(f.amount||0),0);
+    const monthlyCollected = payments.reduce((s,p)=>s+parseFloat(p.amount_paid||0),0);
+    const monthIncidents = incidents.filter(i=>i.record_type!=='award').length;
+    const overdueHw = homework.filter(h=>h.due_date&&h.due_date<today).length;
+    const avgMark = assessments.length>0?Math.round(assessments.reduce((s,a)=>s+parseFloat(a.percentage||0),0)/assessments.length):null;
+
+    const bySubject = {};
+    assessments.forEach(a=>{ if(!bySubject[a.subject]) bySubject[a.subject]=[]; bySubject[a.subject].push(parseFloat(a.percentage||0)); });
+    const subjectPerf = Object.entries(bySubject).map(([sub,marks])=>({sub,avg:Math.round(marks.reduce((s,m)=>s+m,0)/marks.length)})).sort((a,b)=>a.avg-b.avg);
+    const weakSubjects = subjectPerf.slice(0,3);
+    const strongSubjects = subjectPerf.slice(-3).reverse();
+
     document.getElementById('mod-dashboard').innerHTML = `
-    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:800;">Dashboard</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">School overview</p></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;">
-        <div class="stat-card"><p class="lbl">Total Learners</p><p class="num">${learners.length}</p></div>
-        <div class="stat-card"><p class="lbl">Active</p><p class="num">${learners.filter(l=>l.status==='active').length}</p></div>
+    <div style="margin-bottom:1.5rem;">
+        <h2 style="font-size:1.3rem;font-weight:800;">Principal Dashboard</h2>
+        <p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">${new Date().toLocaleDateString('en-ZA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Total Learners</p><p class="num">${activeLearners}</p></div>
+        <div class="stat-card"><p class="lbl">Staff</p><p class="num">${staff.filter(s=>s.status==='active').length}</p></div>
+        <div class="stat-card"><p class="lbl">Today Attendance</p><p class="num" style="color:${attRate===null?'#ffb703':attRate>=80?'#34d399':'#f87171'};">${attRate!==null?attRate+'%':'\u2014'}</p></div>
+        <div class="stat-card"><p class="lbl">Outstanding Fees</p><p class="num" style="color:#f87171;">R${totalOutstanding.toFixed(0)}</p></div>
+        <div class="stat-card"><p class="lbl">Collected (Month)</p><p class="num" style="color:#34d399;">R${monthlyCollected.toFixed(0)}</p></div>
+        <div class="stat-card"><p class="lbl">Incidents (Month)</p><p class="num" style="color:${monthIncidents>0?'#fbbf24':'#34d399'};">${monthIncidents}</p></div>
+        <div class="stat-card"><p class="lbl">Active Homework</p><p class="num">${homework.length}</p></div>
+        <div class="stat-card"><p class="lbl">Leave Pending</p><p class="num" style="color:${pendingLeave.length>0?'#fbbf24':'#34d399'};">${pendingLeave.length}</p></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-chart-line" style="color:#ffb703;"></i> Academic Performance</div>
+            ${avgMark!==null?`<p style="font-size:2rem;font-weight:900;color:#ffb703;margin-bottom:1rem;">${avgMark}% <span style="font-size:0.9rem;color:rgba(255,255,255,0.4);font-weight:400;">school avg</span></p>`:'<p style="color:rgba(255,255,255,0.25);font-size:0.875rem;">No assessment data yet</p>'}
+            ${weakSubjects.length>0?`
+            <p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;margin-bottom:0.5rem;">Needs Support</p>
+            ${weakSubjects.map(s=>`<div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:0.85rem;">${s.sub}</span><span style="color:#f87171;font-weight:700;">${s.avg}%</span></div>`).join('')}
+            <p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;margin:0.75rem 0 0.5rem;">Top Performing</p>
+            ${strongSubjects.map(s=>`<div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:0.85rem;">${s.sub}</span><span style="color:#34d399;font-weight:700;">${s.avg}%</span></div>`).join('')}`:''}
+        </div>
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-triangle-exclamation" style="color:#f87171;"></i> Discipline (This Month)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+                <div style="background:rgba(239,68,68,0.08);border-radius:10px;padding:0.75rem;text-align:center;"><p style="font-size:1.5rem;font-weight:900;color:#f87171;">${incidents.filter(i=>i.record_type==='suspension').length}</p><p style="font-size:0.72rem;color:rgba(255,255,255,0.4);">Suspensions</p></div>
+                <div style="background:rgba(245,158,11,0.08);border-radius:10px;padding:0.75rem;text-align:center;"><p style="font-size:1.5rem;font-weight:900;color:#fbbf24;">${incidents.filter(i=>i.record_type==='detention').length}</p><p style="font-size:0.72rem;color:rgba(255,255,255,0.4);">Detentions</p></div>
+                <div style="background:rgba(239,68,68,0.08);border-radius:10px;padding:0.75rem;text-align:center;"><p style="font-size:1.5rem;font-weight:900;color:#f87171;">${incidents.filter(i=>i.record_type==='bullying_report').length}</p><p style="font-size:0.72rem;color:rgba(255,255,255,0.4);">Bullying Reports</p></div>
+                <div style="background:rgba(16,185,129,0.08);border-radius:10px;padding:0.75rem;text-align:center;"><p style="font-size:1.5rem;font-weight:900;color:#34d399;">${incidents.filter(i=>i.record_type==='award').length}</p><p style="font-size:0.72rem;color:rgba(255,255,255,0.4);">Awards</p></div>
+            </div>
+        </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-money-bill-wave" style="color:#34d399;"></i> Fee Overview</div>
+            ${fees.length===0?'<p style="color:rgba(255,255,255,0.25);font-size:0.875rem;">No fee data</p>':`
+            <div style="margin-bottom:0.75rem;">
+                <div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:0.85rem;">Total Billed</span><span style="font-weight:700;">R${fees.reduce((s,f)=>s+parseFloat(f.amount||0),0).toFixed(0)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:0.85rem;">Outstanding</span><span style="font-weight:700;color:#f87171;">R${totalOutstanding.toFixed(0)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:0.4rem 0;"><span style="font-size:0.85rem;">Paid this month</span><span style="font-weight:700;color:#34d399;">R${monthlyCollected.toFixed(0)}</span></div>
+            </div>
+            <div style="background:rgba(255,255,255,0.06);border-radius:6px;height:8px;overflow:hidden;">
+                <div style="background:linear-gradient(135deg,#34d399,#10b981);height:100%;width:${Math.min(100,Math.round((monthlyCollected/Math.max(1,fees.reduce((s,f)=>s+parseFloat(f.amount||0),0)))*100))}%;border-radius:6px;"></div>
+            </div>
+            <p style="font-size:0.75rem;color:rgba(255,255,255,0.3);margin-top:0.4rem;">Collection rate this month</p>`}
+        </div>
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-bolt" style="color:#ffb703;"></i> Quick Actions</div>
+            <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                <button onclick="showModule('learners',document.querySelector('[onclick*=learners]'));showLearnerForm()" class="btn-secondary" style="text-align:left;"><i class="fas fa-user-plus"></i> Add Learner</button>
+                <button onclick="showModule('attendance',document.querySelector('[onclick*=attendance]'))" class="btn-secondary" style="text-align:left;"><i class="fas fa-calendar-check"></i> Take Attendance</button>
+                <button onclick="showModule('fees',document.querySelector('[onclick*=fees]'));showFeeForm()" class="btn-secondary" style="text-align:left;"><i class="fas fa-money-bill-wave"></i> Record Fee</button>
+                <button onclick="showModule('homework',document.querySelector('[onclick*=homework]'));showHomeworkForm()" class="btn-secondary" style="text-align:left;"><i class="fas fa-book-open"></i> Assign Homework</button>
+                ${overdueHw>0?`<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:0.6rem 1rem;font-size:0.85rem;color:#f87171;"><i class="fas fa-exclamation-circle"></i> ${overdueHw} overdue homework item${overdueHw>1?'s':''}</div>`:''}
+                ${pendingLeave.length>0?`<div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:0.6rem 1rem;font-size:0.85rem;color:#fbbf24;"><i class="fas fa-calendar-minus"></i> ${pendingLeave.length} leave request${pendingLeave.length>1?'s':''} pending approval</div>`:''}
+            </div>
+        </div>
     </div>`;
 }
 

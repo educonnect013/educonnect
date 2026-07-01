@@ -109,6 +109,7 @@ main.content { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="sidebar-item" onclick="showModule('staff',this)"><i class="fas fa-chalkboard-teacher"></i> Staff</div>
             <div class="sidebar-item" onclick="showModule('fees',this)"><i class="fas fa-money-bill-wave"></i> School Fees</div>
             <div class="sidebar-item" onclick="showModule('assessments',this)"><i class="fas fa-pen-to-square"></i> Assessments</div>
+            <div class="sidebar-item" onclick="showModule('homework',this)"><i class="fas fa-book-open"></i> Homework</div>
         </aside>
         <main class="content">
             <div id="mod-dashboard"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading dashboard...</p></div></div>
@@ -118,6 +119,7 @@ main.content { flex:1; padding:1.5rem; overflow-y:auto; }
             <div id="mod-staff" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading staff...</p></div></div>
             <div id="mod-fees" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading fees...</p></div></div>
             <div id="mod-assessments" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading assessments...</p></div></div>
+            <div id="mod-homework" style="display:none;"><div class="card p-6"><p style="color:rgba(255,255,255,0.4);">Loading homework...</p></div></div>
         </main>
     </div>
 </div>
@@ -179,6 +181,7 @@ function showModule(mod, el) {
     if (mod==='staff') loadStaff();
     if (mod==='fees') loadFees();
     if (mod==='assessments') loadAssessments();
+    if (mod==='homework') loadHomework();
     if (mod==='dashboard') loadDashboard();
 }
 
@@ -1159,6 +1162,155 @@ async function saveMarkSheet() {
     if (error) { alert('Error: '+error.message); return; }
     const msg = document.getElementById('saveMsg');
     if (msg) { msg.style.display='inline'; setTimeout(()=>msg.style.display='none', 2000); }
+}
+
+
+async function loadHomework(filter='active') {
+    let query = window.sb.from('ec_homework').select('*').eq('school_id', currentSchoolId).order('due_date');
+    if (filter !== 'all') query = query.eq('status', filter);
+    const { data } = await query;
+    renderHomeworkList(data||[], filter);
+}
+
+function renderHomeworkList(homework, filter) {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('mod-homework').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <div><h2 style="font-size:1.3rem;font-weight:800;">Homework & Assignments</h2><p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">Assign, track and review</p></div>
+        <button onclick="showHomeworkForm()" class="btn-primary"><i class="fas fa-plus"></i> Assign Homework</button>
+    </div>
+    <div id="homeworkFormWrap"></div>
+    <div class="card p-4 mb-6">
+        <div style="display:flex;gap:0.75rem;">
+            <button onclick="loadHomework('active')" class="btn-${filter==='active'?'primary':'secondary'}" style="padding:0.5rem 1rem;font-size:0.85rem;">Active</button>
+            <button onclick="loadHomework('all')" class="btn-${filter==='all'?'primary':'secondary'}" style="padding:0.5rem 1rem;font-size:0.85rem;">All</button>
+        </div>
+    </div>
+    <div id="homeworkList">
+    ${homework.length===0?'<div class="card p-6" style="text-align:center;color:rgba(255,255,255,0.25);">No homework assigned</div>':homework.map(h=>{
+        const overdue = h.due_date && h.due_date < today && h.status==='active';
+        return `<div class="card p-5 mb-4">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                <div style="flex:1;">
+                    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
+                        <span class="badge badge-blue">${h.subject}</span>
+                        <span class="badge badge-${h.status==='active'?'green':'yellow'}">${h.status}</span>
+                        ${overdue?'<span class="badge badge-red">Overdue</span>':''}
+                    </div>
+                    <h3 style="font-weight:700;margin-bottom:0.25rem;">${h.title}</h3>
+                    <p style="font-size:0.85rem;color:rgba(255,255,255,0.4);">${h.class_name} ${h.grade?'\u2022 '+h.grade:''} \u2022 ${h.assigned_by||'\u2014'}</p>
+                    ${h.description?`<p style="font-size:0.85rem;margin-top:0.5rem;color:rgba(255,255,255,0.6);">${h.description}</p>`:''}
+                    ${h.attachment_url?`<a href="${h.attachment_url}" target="_blank" style="color:#ffb703;font-size:0.85rem;"><i class="fas fa-paperclip"></i> Attachment</a>`:''}
+                </div>
+                <div style="text-align:right;flex-shrink:0;margin-left:1rem;">
+                    <p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Due</p>
+                    <p style="font-weight:700;color:${overdue?'#f87171':'#ffb703'};">${h.due_date?new Date(h.due_date).toLocaleDateString('en-ZA'):'\u2014'}</p>
+                </div>
+            </div>
+            <div style="margin-top:0.75rem;display:flex;gap:0.5rem;">
+                <button onclick="viewSubmissions('${h.id}','${h.title.replace(/'/g,"\\'")}','${h.class_name}')" class="btn-secondary" style="font-size:0.8rem;padding:0.4rem 0.85rem;"><i class="fas fa-list"></i> Submissions</button>
+                <button onclick="closeHomework('${h.id}')" class="btn-secondary" style="font-size:0.8rem;padding:0.4rem 0.85rem;"><i class="fas fa-check"></i> Close</button>
+            </div>
+        </div>`;
+    }).join('')}
+    </div>`;
+}
+
+function showHomeworkForm() {
+    const classes = [...new Set(allLearners.map(l=>l.class_name).filter(Boolean))].sort();
+    document.getElementById('homeworkFormWrap').innerHTML = `
+    <div class="card p-6 mb-6">
+        <div class="section-header"><i class="fas fa-plus" style="color:#ffb703;"></i> Assign Homework</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+            <div><label>Class *</label><select id="hwClass">
+                <option value="">Select class...</option>${classes.map(c=>`<option value="${c}">${c}</option>`).join('')}
+            </select></div>
+            <div><label>Subject *</label><input id="hwSubject" placeholder="e.g. Mathematics"></div>
+            <div><label>Title *</label><input id="hwTitle" placeholder="Assignment title"></div>
+            <div><label>Due Date</label><input id="hwDue" type="date"></div>
+            <div><label>Assigned By</label><input id="hwBy" value="${currentUser.full_name||currentUser.username}"></div>
+            <div><label>Attachment URL</label><input id="hwUrl" placeholder="Link to file (optional)"></div>
+            <div style="grid-column:1/-1;"><label>Description / Instructions</label><textarea id="hwDesc" placeholder="Describe the homework task..." style="height:80px;resize:vertical;"></textarea></div>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;">
+            <button onclick="addHomework()" class="btn-primary"><i class="fas fa-save"></i> Assign</button>
+            <button onclick="document.getElementById('homeworkFormWrap').innerHTML=''" class="btn-secondary">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function addHomework() {
+    const className = document.getElementById('hwClass').value;
+    const subject = document.getElementById('hwSubject').value.trim();
+    const title = document.getElementById('hwTitle').value.trim();
+    if (!className||!subject||!title) { alert('Class, subject and title are required'); return; }
+    const grade = allLearners.find(l=>l.class_name===className)?.grade||'';
+    const { error } = await window.sb.from('ec_homework').insert([{
+        school_id: currentSchoolId,
+        class_name: className,
+        grade,
+        subject,
+        title,
+        description: document.getElementById('hwDesc').value.trim(),
+        due_date: document.getElementById('hwDue').value||null,
+        assigned_by: document.getElementById('hwBy').value.trim(),
+        attachment_url: document.getElementById('hwUrl').value.trim(),
+        status: 'active'
+    }]);
+    if (error) { alert('Error: '+error.message); return; }
+    document.getElementById('homeworkFormWrap').innerHTML='';
+    await loadHomework();
+}
+
+async function closeHomework(id) {
+    if (!confirm('Mark this homework as closed?')) return;
+    await window.sb.from('ec_homework').update({status:'closed'}).eq('id',id);
+    await loadHomework();
+}
+
+async function viewSubmissions(hwId, hwTitle, className) {
+    const [subRes, learnerRes] = await Promise.all([
+        window.sb.from('ec_homework_submissions').select('*').eq('homework_id', hwId),
+        window.sb.from('ec_learners').select('id,full_name').eq('school_id', currentSchoolId).eq('class_name', className).eq('status','active').order('full_name')
+    ]);
+    const submissions = subRes.data||[];
+    const learners = learnerRes.data||[];
+    document.getElementById('mod-homework').innerHTML = `
+    <button onclick="loadHomework()" class="btn-secondary mb-4"><i class="fas fa-arrow-left"></i> Back to Homework</button>
+    <div style="margin-bottom:1.5rem;">
+        <h2 style="font-size:1.3rem;font-weight:800;">Submissions</h2>
+        <p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">${hwTitle} \u2022 ${className}</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Total Learners</p><p class="num">${learners.length}</p></div>
+        <div class="stat-card"><p class="lbl">Submitted</p><p class="num" style="color:#34d399;">${submissions.length}</p></div>
+        <div class="stat-card"><p class="lbl">Pending</p><p class="num" style="color:#f87171;">${learners.length-submissions.length}</p></div>
+    </div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 1fr 80px;"><span>Learner</span><span>Status</span><span>Mark</span><span>Submitted</span><span></span></div>
+        <div>${learners.map(l=>{
+            const sub = submissions.find(s=>s.learner_id===l.id);
+            return `<div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 80px;">
+                <span style="font-weight:600;">${l.full_name}</span>
+                <span class="badge badge-${sub?'green':'red'}">${sub?'Submitted':'Pending'}</span>
+                <span>${sub&&sub.mark!=null?sub.mark+'%':'\u2014'}</span>
+                <span style="font-size:0.82rem;color:rgba(255,255,255,0.4);">${sub?new Date(sub.submitted_at).toLocaleDateString('en-ZA'):'\u2014'}</span>
+                <div>${!sub?`<button onclick="logSubmission('${hwId}','${l.id}','${l.full_name.replace(/'/g,"\\'")}','${hwTitle.replace(/'/g,"\\'")}','${className}')" class="btn-success" style="padding:0.25rem 0.5rem;font-size:0.75rem;">Log</button>`:''}</div>
+            </div>`;
+        }).join('')}</div>
+    </div>`;
+}
+
+async function logSubmission(hwId, learnerId, learnerName, hwTitle, className) {
+    const { error } = await window.sb.from('ec_homework_submissions').insert([{
+        school_id: currentSchoolId,
+        homework_id: hwId,
+        learner_id: learnerId,
+        learner_name: learnerName,
+        status: 'submitted'
+    }]);
+    if (error) { alert('Error: '+error.message); return; }
+    await viewSubmissions(hwId, hwTitle, className);
 }
 
 checkSession();

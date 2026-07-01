@@ -375,6 +375,14 @@ async function addLearner() {
     await loadLearners();
 }
 
+let cachedAcademic = [];
+let cachedBehaviour = [];
+let cachedDocuments = [];
+
+function switchLearnerTab(tab) {
+    renderLearnerDetail(activeLearner, cachedAcademic, cachedBehaviour, cachedDocuments, tab);
+}
+
 async function viewLearner(id) {
     const { data: learner } = await window.sb.from('ec_learners').select('*').eq('id',id).single();
     if (!learner) return;
@@ -384,7 +392,10 @@ async function viewLearner(id) {
         window.sb.from('ec_behaviour_records').select('*').eq('learner_id',id).order('incident_date',{ascending:false}),
         window.sb.from('ec_documents').select('*').eq('learner_id',id).order('created_at',{ascending:false})
     ]);
-    renderLearnerDetail(learner, aRes.data||[], bRes.data||[], dRes.data||[], 'profile');
+    cachedAcademic = aRes.data||[];
+    cachedBehaviour = bRes.data||[];
+    cachedDocuments = dRes.data||[];
+    renderLearnerDetail(learner, cachedAcademic, cachedBehaviour, cachedDocuments, 'profile');
 }
 
 function renderLearnerDetail(l, academic, behaviour, documents, activeTab) {
@@ -395,10 +406,10 @@ function renderLearnerDetail(l, academic, behaviour, documents, activeTab) {
         <span class="badge badge-${l.status==='active'?'green':'red'}">${l.status}</span>
     </div>
     <div class="tabs">
-        <div class="tab ${activeTab==='profile'?'active':''}" onclick="renderLearnerDetail(activeLearner,${JSON.stringify(academic)},${JSON.stringify(behaviour)},${JSON.stringify(documents)},'profile')">Profile</div>
-        <div class="tab ${activeTab==='academic'?'active':''}" onclick="renderLearnerDetail(activeLearner,${JSON.stringify(academic)},${JSON.stringify(behaviour)},${JSON.stringify(documents)},'academic')">Academic (${academic.length})</div>
-        <div class="tab ${activeTab==='behaviour'?'active':''}" onclick="renderLearnerDetail(activeLearner,${JSON.stringify(academic)},${JSON.stringify(behaviour)},${JSON.stringify(documents)},'behaviour')">Behaviour (${behaviour.length})</div>
-        <div class="tab ${activeTab==='documents'?'active':''}" onclick="renderLearnerDetail(activeLearner,${JSON.stringify(academic)},${JSON.stringify(behaviour)},${JSON.stringify(documents)},'documents')">Documents (${documents.length})</div>
+        <div class="tab ${activeTab==='profile'?'active':''}" onclick="switchLearnerTab('profile')">Profile</div>
+        <div class="tab ${activeTab==='academic'?'active':''}" onclick="switchLearnerTab('academic')">Academic (${academic.length})</div>
+        <div class="tab ${activeTab==='behaviour'?'active':''}" onclick="switchLearnerTab('behaviour')">Behaviour (${behaviour.length})</div>
+        <div class="tab ${activeTab==='documents'?'active':''}" onclick="switchLearnerTab('documents')">Documents (${documents.length})</div>
     </div>
     <div id="tabContent"></div>`;
 
@@ -481,6 +492,7 @@ async function addAcademicRecord(learnerId) {
     }]);
     if (error) { alert('Error: '+error.message); return; }
     await viewLearner(learnerId);
+    switchLearnerTab('academic');
 }
 
 async function addBehaviourRecord(learnerId) {

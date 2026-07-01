@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EduConnect - Parent Portal</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="supabase-init.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: linear-gradient(135deg, #14213d 0%, #1a2744 40%, #0d1b2a 100%); min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e2e8f0; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+::-webkit-scrollbar-thumb { background: rgba(255,183,3,0.25); border-radius: 3px; }
+
+#loginScreen { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:1rem; position:relative; overflow:hidden; }
+#loginScreen .glow { position:absolute; width:600px; height:600px; border-radius:50%; background:radial-gradient(circle,rgba(255,183,3,0.07) 0%,transparent 70%); top:-200px; right:-200px; pointer-events:none; }
+.login-card { background: rgba(255,255,255,0.05); backdrop-filter: blur(32px); -webkit-backdrop-filter: blur(32px); border: 1px solid rgba(255,183,3,0.15); border-radius: 24px; padding: 2.5rem; width:100%; max-width:400px; box-shadow: 0 32px 80px rgba(0,0,0,0.6); position:relative; z-index:1; }
+.login-logo { width:64px; height:64px; background:linear-gradient(135deg,#ffb703,#fb8500); border-radius:14px; display:flex; align-items:center; justify-content:center; margin:0 auto 1rem; box-shadow:0 8px 24px rgba(255,183,3,0.4); }
+.login-card h1 { font-size:1.4rem; font-weight:900; color:#ffb703; text-align:center; letter-spacing:1px; }
+.login-card .sub { color:rgba(255,255,255,0.4); font-size:0.85rem; text-align:center; margin-top:0.3rem; margin-bottom:1.75rem; }
+.error-msg { background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.25); color:#f87171; padding:0.7rem 1rem; border-radius:10px; font-size:0.85rem; margin-bottom:1rem; display:none; }
+
+label { color:rgba(255,183,3,0.85); font-size:0.75rem; font-weight:700; display:block; margin-bottom:0.35rem; text-transform:uppercase; letter-spacing:0.06em; }
+input { background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,183,3,0.03)); border: 1px solid rgba(255,183,3,0.15); border-radius: 10px; color: #e2e8f0; padding: 0.7rem 0.9rem; width: 100%; font-size: 0.9rem; outline: none; transition:all 0.2s; box-shadow: inset 0 2px 8px rgba(0,0,0,0.2); }
+input:focus { border-color: rgba(255,183,3,0.5); background: rgba(255,183,3,0.06); box-shadow: inset 0 2px 8px rgba(0,0,0,0.2), 0 0 0 3px rgba(255,183,3,0.1); }
+input::placeholder { color: rgba(255,255,255,0.25); }
+.field { margin-bottom:1.1rem; }
+
+.btn-primary { background: linear-gradient(135deg, #ffb703, #fb8500); border: none; color: #1a1100; font-weight: 700; cursor: pointer; border-radius: 10px; padding: 0.85rem 1.25rem; font-size:1rem; width:100%; transition: all 0.2s; box-shadow: 0 4px 15px rgba(255,183,3,0.3); }
+.btn-primary:hover { background: linear-gradient(135deg, #ffc733, #ff9a1f); }
+.btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-weight: 600; cursor: pointer; border-radius: 10px; padding: 0.65rem 1.2rem; font-size:0.9rem; transition:all 0.2s; }
+.btn-secondary:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,183,3,0.3); color: #ffb703; }
+
+#mainApp { display:none; min-height:100vh; }
+nav.topnav { background:rgba(13,27,42,0.9); backdrop-filter:blur(20px); border-bottom:1px solid rgba(255,183,3,0.1); padding:0 1.5rem; height:60px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+.brand { display:flex; align-items:center; gap:0.75rem; }
+.brand .logo { width:36px; height:36px; background:linear-gradient(135deg,#ffb703,#fb8500); border-radius:8px; display:flex; align-items:center; justify-content:center; }
+
+.shell { display:flex; min-height:calc(100vh - 60px); }
+aside.sidebar { width:220px; background:rgba(10,20,32,0.7); backdrop-filter:blur(20px); border-right:1px solid rgba(255,183,3,0.08); padding:1rem; flex-shrink:0; }
+.nav-item { display:flex; align-items:center; gap:0.75rem; padding:0.65rem 1rem; border-radius:10px; cursor:pointer; font-size:0.875rem; font-weight:500; color:rgba(255,255,255,0.5); transition:all 0.2s; margin-bottom:0.2rem; }
+.nav-item:hover { background:rgba(255,183,3,0.08); color:#ffb703; }
+.nav-item.active { background:rgba(255,183,3,0.12); color:#ffb703; font-weight:700; border-left:3px solid #ffb703; }
+.nav-item i { width:18px; text-align:center; }
+
+main.content { flex:1; padding:1.5rem; overflow-y:auto; max-width:900px; }
+.card { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,183,3,0.1); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+.p-5 { padding:1.25rem; } .p-6 { padding:1.5rem; }
+.mb-4 { margin-bottom:1rem; } .mb-6 { margin-bottom:1.5rem; }
+.section-header { font-size:1rem; font-weight:700; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem; }
+.stat-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,183,3,0.1); border-radius: 16px; padding: 1.25rem; }
+.stat-card .num { font-size:2rem; font-weight:900; color:#ffb703; }
+.stat-card .lbl { color:rgba(255,255,255,0.35); font-size:0.78rem; font-weight:600; text-transform:uppercase; }
+.table-row { display:grid; padding:0.8rem 1rem; border-bottom:1px solid rgba(255,255,255,0.04); align-items:center; font-size:0.875rem; }
+.table-head { background:rgba(0,0,0,0.2); border-bottom:1px solid rgba(255,183,3,0.1); font-weight:700; font-size:0.72rem; color:rgba(255,183,3,0.7); text-transform:uppercase; letter-spacing:0.07em; }
+.badge { display:inline-block; padding:0.2rem 0.65rem; border-radius:20px; font-size:0.72rem; font-weight:700; }
+.badge-green { background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.2); }
+.badge-red { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.2); }
+.badge-yellow { background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.2); }
+.badge-blue { background:rgba(255,183,3,0.12); color:#ffb703; border:1px solid rgba(255,183,3,0.2); }
+.section { display:none; }
+.section.active { display:block; animation:fadeIn 0.3s; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:translateY(0);} }
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+    <div class="glow"></div>
+    <div class="login-card">
+        <div class="login-logo"><i class="fas fa-users" style="color:white;font-size:1.4rem;"></i></div>
+        <h1>Parent Portal</h1>
+        <p class="sub">EduConnect — School Management Platform</p>
+        <div id="errorMsg" class="error-msg"></div>
+        <div class="field"><label>Email Address</label><input id="loginEmail" placeholder="your@email.com" type="email"></div>
+        <div class="field"><label>Password</label><input id="loginPassword" placeholder="Password" type="password"></div>
+        <button onclick="parentLogin()" class="btn-primary" style="margin-bottom:1rem;"><i class="fas fa-sign-in-alt"></i> Sign In</button>
+        <p style="text-align:center;color:rgba(255,255,255,0.2);font-size:0.75rem;">Contact your school to get access to this portal</p>
+    </div>
+</div>
+
+<div id="mainApp">
+    <nav class="topnav">
+        <div class="brand">
+            <div class="logo"><i class="fas fa-graduation-cap" style="color:white;font-size:1rem;"></i></div>
+            <div>
+                <div style="font-weight:800;color:#ffb703;letter-spacing:1px;">EduConnect</div>
+                <div style="color:rgba(255,255,255,0.3);font-size:0.7rem;">Parent Portal</div>
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:1rem;">
+            <span id="navLearnerName" style="color:rgba(255,255,255,0.7);font-size:0.875rem;font-weight:600;"></span>
+            <button onclick="parentLogout()" class="btn-secondary"><i class="fas fa-sign-out-alt"></i> Logout</button>
+        </div>
+    </nav>
+    <div class="shell">
+        <aside class="sidebar">
+            <div class="nav-item active" onclick="showSection('overview',this)"><i class="fas fa-home"></i> Overview</div>
+            <div class="nav-item" onclick="showSection('attendance',this)"><i class="fas fa-calendar-check"></i> Attendance</div>
+            <div class="nav-item" onclick="showSection('marks',this)"><i class="fas fa-pen-to-square"></i> Marks</div>
+            <div class="nav-item" onclick="showSection('fees',this)"><i class="fas fa-money-bill-wave"></i> Fees</div>
+            <div class="nav-item" onclick="showSection('behaviour',this)"><i class="fas fa-triangle-exclamation"></i> Behaviour</div>
+        </aside>
+        <main class="content">
+            <div class="section active" id="sec-overview"></div>
+            <div class="section" id="sec-attendance"></div>
+            <div class="section" id="sec-marks"></div>
+            <div class="section" id="sec-fees"></div>
+            <div class="section" id="sec-behaviour"></div>
+        </main>
+    </div>
+</div>
+
+<script>
+let parentUser = null;
+let linkedLearner = null;
+
+function showError(msg) { const el=document.getElementById('errorMsg'); el.textContent=msg; el.style.display='block'; }
+function hideError() { document.getElementById('errorMsg').style.display='none'; }
+
+function showSection(id, el) {
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    document.getElementById('sec-'+id).classList.add('active');
+    if (el) el.classList.add('active');
+    if (id==='attendance') loadAttendanceView();
+    if (id==='marks') loadMarksView();
+    if (id==='fees') loadFeesView();
+    if (id==='behaviour') loadBehaviourView();
+}
+
+async function parentLogin() {
+    hideError();
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    if (!email||!password) { showError('Enter email and password'); return; }
+    const { data, error } = await window.sb.auth.signInWithPassword({ email, password });
+    if (error||!data.user) { showError('Invalid email or password'); return; }
+    parentUser = data.user;
+    await loadParentData();
+}
+
+async function parentLogout() { await window.sb.auth.signOut(); location.reload(); }
+
+async function checkSession() {
+    const { data: { session } } = await window.sb.auth.getSession();
+    if (!session) return;
+    parentUser = session.user;
+    await loadParentData();
+}
+
+async function loadParentData() {
+    const { data: parentRec, error } = await window.sb.from('ec_parents').select('*').eq('auth_user_id', parentUser.id).single();
+    if (error||!parentRec) { showError('No learner linked to this account. Contact your school.'); await window.sb.auth.signOut(); return; }
+    const { data: learner } = await window.sb.from('ec_learners').select('*').eq('id', parentRec.learner_id).single();
+    linkedLearner = learner;
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    document.getElementById('navLearnerName').textContent = learner.full_name||'';
+    loadOverview();
+}
+
+async function loadOverview() {
+    const today = new Date().toISOString().split('T')[0];
+    const monthStart = new Date(); monthStart.setDate(1);
+    const [attRes, markRes, feeRes, bhvRes] = await Promise.all([
+        window.sb.from('ec_attendance').select('status').eq('learner_id', linkedLearner.id),
+        window.sb.from('ec_assessments').select('percentage,subject').eq('learner_id', linkedLearner.id),
+        window.sb.from('ec_fees').select('amount,status').eq('learner_id', linkedLearner.id),
+        window.sb.from('ec_behaviour_records').select('id,record_type').eq('learner_id', linkedLearner.id)
+    ]);
+    const att = attRes.data||[];
+    const marks = markRes.data||[];
+    const fees = feeRes.data||[];
+    const bhv = bhvRes.data||[];
+    const attRate = att.length>0?Math.round((att.filter(a=>a.status==='present').length/att.length)*100):0;
+    const avgMark = marks.length>0?Math.round(marks.reduce((s,m)=>s+parseFloat(m.percentage||0),0)/marks.length):0;
+    const outstanding = fees.filter(f=>f.status==='outstanding').reduce((s,f)=>s+parseFloat(f.amount||0),0);
+    const incidents = bhv.filter(b=>b.record_type!=='award').length;
+
+    document.getElementById('sec-overview').innerHTML = `
+    <div style="margin-bottom:1.5rem;">
+        <h2 style="font-size:1.3rem;font-weight:800;">${linkedLearner.full_name}</h2>
+        <p style="color:rgba(255,255,255,0.4);font-size:0.875rem;">${linkedLearner.grade||''} ${linkedLearner.class_name?'\u2022 '+linkedLearner.class_name:''}</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Attendance Rate</p><p class="num" style="color:${attRate>=80?'#34d399':'#f87171'};">${attRate}%</p></div>
+        <div class="stat-card"><p class="lbl">Average Mark</p><p class="num">${avgMark}%</p></div>
+        <div class="stat-card"><p class="lbl">Outstanding Fees</p><p class="num" style="color:${outstanding>0?'#f87171':'#34d399'};">R${outstanding.toFixed(2)}</p></div>
+        <div class="stat-card"><p class="lbl">Incidents</p><p class="num" style="color:${incidents>0?'#fbbf24':'#34d399'};">${incidents}</p></div>
+    </div>
+    <div class="card p-5">
+        <div class="section-header"><i class="fas fa-user" style="color:#ffb703;"></i> Learner Details</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Student Number</p><p>${linkedLearner.student_number||'\u2014'}</p></div>
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Date of Birth</p><p>${linkedLearner.date_of_birth?new Date(linkedLearner.date_of_birth).toLocaleDateString('en-ZA'):'\u2014'}</p></div>
+            <div><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Status</p><span class="badge badge-${linkedLearner.status==='active'?'green':'red'}">${linkedLearner.status}</span></div>
+            ${linkedLearner.allergies?`<div style="grid-column:1/-1;"><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Allergies</p><p style="color:#f87171;">${linkedLearner.allergies}</p></div>`:''}
+            ${linkedLearner.medical_conditions?`<div style="grid-column:1/-1;"><p style="font-size:0.7rem;color:rgba(255,183,3,0.7);text-transform:uppercase;">Medical Conditions</p><p>${linkedLearner.medical_conditions}</p></div>`:''}
+        </div>
+    </div>`;
+}
+
+async function loadAttendanceView() {
+    const { data } = await window.sb.from('ec_attendance').select('*').eq('learner_id', linkedLearner.id).order('date',{ascending:false});
+    const records = data||[];
+    const present = records.filter(r=>r.status==='present').length;
+    const absent = records.filter(r=>r.status==='absent').length;
+    const late = records.filter(r=>r.status==='late').length;
+    document.getElementById('sec-attendance').innerHTML = `
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:800;">Attendance History</h2></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Total Days</p><p class="num">${records.length}</p></div>
+        <div class="stat-card"><p class="lbl">Present</p><p class="num" style="color:#34d399;">${present}</p></div>
+        <div class="stat-card"><p class="lbl">Absent</p><p class="num" style="color:#f87171;">${absent}</p></div>
+        <div class="stat-card"><p class="lbl">Late</p><p class="num" style="color:#fbbf24;">${late}</p></div>
+    </div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:1fr 1fr 1fr;"><span>Date</span><span>Status</span><span>Notes</span></div>
+        <div>${records.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No attendance records</div>':records.map(r=>`
+        <div class="table-row" style="grid-template-columns:1fr 1fr 1fr;">
+            <span>${r.date?new Date(r.date).toLocaleDateString('en-ZA'):'\u2014'}</span>
+            <span class="badge badge-${r.status==='present'?'green':r.status==='absent'?'red':'yellow'}">${r.status}</span>
+            <span style="font-size:0.82rem;color:rgba(255,255,255,0.4);">${r.absence_reason||'\u2014'}</span>
+        </div>`).join('')}</div>
+    </div>`;
+}
+
+async function loadMarksView() {
+    const { data } = await window.sb.from('ec_assessments').select('*').eq('learner_id', linkedLearner.id).order('created_at',{ascending:false});
+    const records = data||[];
+    const bySubject = {};
+    records.forEach(r=>{ if(!bySubject[r.subject]) bySubject[r.subject]=[]; bySubject[r.subject].push(r); });
+    document.getElementById('sec-marks').innerHTML = `
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:800;">Assessment Marks</h2></div>
+    ${Object.entries(bySubject).length===0?'<div class="card p-6" style="text-align:center;color:rgba(255,255,255,0.25);">No marks recorded yet</div>':Object.entries(bySubject).map(([sub,recs])=>{
+        const avg = Math.round(recs.reduce((s,r)=>s+parseFloat(r.percentage||0),0)/recs.length);
+        return `<div class="card p-5 mb-4">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <div class="section-header" style="margin:0;"><i class="fas fa-book" style="color:#ffb703;"></i> ${sub}</div>
+                <span style="font-weight:800;font-size:1.1rem;color:#ffb703;">Avg: ${avg}%</span>
+            </div>
+            <div class="card" style="overflow:hidden;">
+                <div class="table-row table-head" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr;"><span>Term</span><span>Type</span><span>Mark</span><span>%</span><span>Grade</span></div>
+                ${recs.map(r=>`<div class="table-row" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr;">
+                    <span>${r.term||'\u2014'}</span>
+                    <span class="badge badge-blue">${r.assessment_type}</span>
+                    <span>${r.mark!=null?r.mark+'/'+r.total:'\u2014'}</span>
+                    <span style="font-weight:700;">${r.percentage!=null?r.percentage+'%':'\u2014'}</span>
+                    <span style="font-weight:800;color:${r.grade_achieved==='A'?'#34d399':r.grade_achieved==='B'?'#60a5fa':r.grade_achieved==='C'?'#ffb703':'#f87171'};">${r.grade_achieved||'\u2014'}</span>
+                </div>`).join('')}
+            </div>
+        </div>`;
+    }).join('')}`;
+}
+
+async function loadFeesView() {
+    const [feeRes, payRes] = await Promise.all([
+        window.sb.from('ec_fees').select('*').eq('learner_id', linkedLearner.id).order('due_date'),
+        window.sb.from('ec_fee_payments').select('*').eq('learner_id', linkedLearner.id).order('payment_date',{ascending:false})
+    ]);
+    const fees = feeRes.data||[];
+    const payments = payRes.data||[];
+    const totalBilled = fees.reduce((s,f)=>s+parseFloat(f.amount||0),0);
+    const totalPaid = payments.reduce((s,p)=>s+parseFloat(p.amount_paid||0),0);
+    document.getElementById('sec-fees').innerHTML = `
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:800;">Fees & Payments</h2></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Total Billed</p><p class="num">R${totalBilled.toFixed(2)}</p></div>
+        <div class="stat-card"><p class="lbl">Total Paid</p><p class="num" style="color:#34d399;">R${totalPaid.toFixed(2)}</p></div>
+        <div class="stat-card"><p class="lbl">Outstanding</p><p class="num" style="color:#f87171;">R${(totalBilled-totalPaid).toFixed(2)}</p></div>
+    </div>
+    <div class="card p-5 mb-4">
+        <div class="section-header"><i class="fas fa-file-invoice" style="color:#ffb703;"></i> Fee Schedule</div>
+        <div class="card" style="overflow:hidden;">
+            <div class="table-row table-head" style="grid-template-columns:1.5fr 1fr 1fr 1fr;"><span>Type</span><span>Amount</span><span>Due</span><span>Status</span></div>
+            ${fees.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No fees</div>':fees.map(f=>`
+            <div class="table-row" style="grid-template-columns:1.5fr 1fr 1fr 1fr;">
+                <span>${f.fee_type}</span>
+                <span style="font-weight:700;color:#ffb703;">R${parseFloat(f.amount||0).toFixed(2)}</span>
+                <span style="font-size:0.85rem;">${f.due_date?new Date(f.due_date).toLocaleDateString('en-ZA'):'\u2014'}</span>
+                <span class="badge badge-${f.status==='paid'?'green':f.status==='partial'?'yellow':'red'}">${f.status}</span>
+            </div>`).join('')}
+        </div>
+    </div>
+    <div class="card p-5">
+        <div class="section-header"><i class="fas fa-receipt" style="color:#ffb703;"></i> Payment History</div>
+        <div class="card" style="overflow:hidden;">
+            <div class="table-row table-head" style="grid-template-columns:1fr 1fr 1fr 1fr;"><span>Date</span><span>Amount</span><span>Method</span><span>Reference</span></div>
+            ${payments.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No payments yet</div>':payments.map(p=>`
+            <div class="table-row" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+                <span>${p.payment_date?new Date(p.payment_date).toLocaleDateString('en-ZA'):'\u2014'}</span>
+                <span style="font-weight:700;color:#34d399;">R${parseFloat(p.amount_paid||0).toFixed(2)}</span>
+                <span>${p.payment_method||'\u2014'}</span>
+                <span style="font-size:0.82rem;color:rgba(255,255,255,0.4);">${p.reference||'\u2014'}</span>
+            </div>`).join('')}
+        </div>
+    </div>`;
+}
+
+async function loadBehaviourView() {
+    const { data } = await window.sb.from('ec_behaviour_records').select('*').eq('learner_id', linkedLearner.id).order('incident_date',{ascending:false});
+    const records = data||[];
+    const incidents = records.filter(r=>r.record_type!=='award');
+    const awards = records.filter(r=>r.record_type==='award');
+    document.getElementById('sec-behaviour').innerHTML = `
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:800;">Behaviour Records</h2></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Total Records</p><p class="num">${records.length}</p></div>
+        <div class="stat-card"><p class="lbl">Incidents</p><p class="num" style="color:#f87171;">${incidents.length}</p></div>
+        <div class="stat-card"><p class="lbl">Awards</p><p class="num" style="color:#34d399;">${awards.length}</p></div>
+    </div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:1fr 1fr 2fr 1fr;"><span>Date</span><span>Type</span><span>Description</span><span>Severity</span></div>
+        <div>${records.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.25);">No behaviour records</div>':records.map(r=>`
+        <div class="table-row" style="grid-template-columns:1fr 1fr 2fr 1fr;">
+            <span style="font-size:0.85rem;">${r.incident_date?new Date(r.incident_date).toLocaleDateString('en-ZA'):'\u2014'}</span>
+            <span class="badge badge-${r.record_type==='award'?'green':'blue'}">${r.record_type.replace(/_/g,' ')}</span>
+            <span style="font-size:0.85rem;">${(r.description||'\u2014').substring(0,60)}${(r.description||'').length>60?'...':''}</span>
+            <span class="badge badge-${r.severity==='high'?'red':r.severity==='medium'?'yellow':'blue'}">${r.severity||'\u2014'}</span>
+        </div>`).join('')}
+        </div>
+    </div>`;
+}
+
+checkSession();
+</script>
+</body>
+</html>
